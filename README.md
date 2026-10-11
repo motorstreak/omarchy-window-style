@@ -12,6 +12,7 @@ window only where it should differ:
 | Floating | Floating windows, popped-out ones (Super + O) included |
 | Sidebars | Windows of the [Sidebar plugin](https://github.com/motorstreak/omarchy-sidebar), when it's installed |
 | Pinned | Windows the [Dock plugin](https://github.com/motorstreak/omarchy-dock) pins, when it's installed |
+| Menus | Omarchy's menus, launcher, popups and notifications |
 
 Without this plugin, the Sidebar and Dock plugins keep their own looks.
 
@@ -32,7 +33,7 @@ file, also run `omarchy restart shell`. Remove it with
 Sidebars tab).
 
 - `Tab` / `Shift + Tab` (or a click) switch tabs: All windows, Tiled, Floating,
-  Sidebars, Pinned.
+  Sidebars, Pinned, Menus.
 - `↑` / `↓` choose a row; `←` / `→` (or a click) change it. A change shows at
   once and is saved.
 - On a kind's tab, values it takes from All windows are dimmed and marked
@@ -47,6 +48,13 @@ Sidebars tab).
   green in most), also in themes that only name their colours.
 - The bottom row resets the tab (on All windows: everything, back to Omarchy's
   look). Press it twice.
+
+The **Menus** tab styles Omarchy's own menus, launcher, popups and
+notifications: theme, border, its colour, width and opacity, and how solid
+their background is. They aren't windows, so it writes these into
+`~/.config/omarchy/shell.toml` (its `[menu]`, `[launcher]`, `[popups]` and
+`[notifications]` sections; everything else there is left alone), which the
+shell picks up at once. Their rounding follows the windows'.
 
 Shadows have one look for every window, as Hyprland allows only one: set it on
 All windows (a **glow** in the accent colour, or a faint dark **shadow**, its
@@ -71,18 +79,21 @@ return {
   floating = { rounding = 20 },        -- only what differs from all windows
   sidebars = { border_colour = "color2", border_opacity = 1 },
   pinned = { border = false, shadow = true },
+  menus = { border_size = 3, background_opacity = 0.95 },
   shadow_look = "glow",                -- or "shadow"
   shadow_size = 6,
   shadow_opacity = 0.2,
 }
 ```
 
-Each kind (`all`, `tiled`, `floating`, `sidebars`, `pinned`) takes: `theme`
+Each kind (`all`, `tiled`, `floating`, `sidebars`, `pinned`, `menus`) takes: `theme`
 (a theme's folder name, or "current"), `border`
 (false: none), `border_size`, `border_colour`, `border_colour_unfocused`,
 `border_opacity`, `border_opacity_unfocused`, `rounding`, `shadow`,
 `opacity`, `opacity_unfocused` (the window, 0.5 to 1; only windows Omarchy
-makes see-through, as apps that should stay solid opt out).
+makes see-through, as apps that should stay solid opt out). `menus` also
+takes `background_opacity` (0 to 1), and ignores the window-only options
+(rounding, shadow, opacity).
 
 ## How it works
 
