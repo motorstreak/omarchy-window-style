@@ -77,8 +77,10 @@ local OPTIONS = {
   shadow = "boolean",
   opacity = "number", -- the window itself, 0.1 to 1
   opacity_unfocused = "number",
+  -- Menus only: how solid their background is, 0 to 1.
+  background_opacity = "number",
 }
-local KINDS = { "all", "tiled", "floating", "sidebars", "pinned" }
+local KINDS = { "all", "tiled", "floating", "sidebars", "pinned", "menus" }
 
 local defaults = {
   all = {},
@@ -86,6 +88,7 @@ local defaults = {
   floating = {},
   sidebars = {},
   pinned = {},
+  menus = {},
   -- One shadow look for every window (Hyprland has one): "glow", in the
   -- theme's accent colour, or "shadow", large, faint and dark.
   shadow_look = "glow",
@@ -93,7 +96,7 @@ local defaults = {
   shadow_opacity = 0.2, -- 0 (clear) to 1 (solid)
 }
 
-local config = { all = {}, tiled = {}, floating = {}, sidebars = {}, pinned = {} }
+local config = { all = {}, tiled = {}, floating = {}, sidebars = {}, pinned = {}, menus = {} }
 for k, v in pairs(defaults) do
   if type(v) ~= "table" then
     config[k] = v
@@ -445,12 +448,149 @@ local function apply()
     no_rule("window-style-floating-shadow")
   end
 
+  guard("styling the menus", write_menus)()
+
   -- Sidebars and pinned windows: their plugins style them, asking `look`.
   if type(sidebar) == "table" and sidebar.retheme then
     sidebar.retheme()
   end
   if type(dock) == "table" and dock.restyle then
     dock.restyle()
+  end
+end
+
+-- Menus: Omarchy's shell draws its menus, launcher, popups and notifications
+-- itself, styled from ~/.config/omarchy/shell.toml (which it reloads on a
+-- change). So the menus kind is written there: in each of those sections, the
+-- border's colour, opacity and width, and the background's opacity; a value
+-- not set anywhere is taken out, back to the theme's. Everything else in the
+-- file stays. (Their rounding follows Hyprland's, so tiled windows'.)
+local shell_file = home .. "/.config/omarchy/shell.toml"
+local MENU_SECTIONS = { "menu", "launcher", "popups", "notifications" }
+
+local function menu_values()
+  local colors, own = kind_colors("menus")
+  local keys = {}
+  local name = value("menus", "border_colour")
+  if name ~= nil then
+    local theme = value("menus", "theme")
+    local current = theme == nil or theme == "current"
+    if current and (name == "accent" or name == "foreground") then
+      keys["border"] = name -- the shell follows theme changes itself
+    else
+      local rgb = name == "theme" and own[1] or colour_in(colors, name)
+      if rgb then
+        keys["border"] = "#" .. rgb
+      end
+    end
+  end
+  local opacity = value("menus", "border_opacity")
+  if opacity ~= nil then
+    keys["border-alpha"] = opacity
+  end
+  local width = border_width("menus")
+  if width ~= nil then
+    keys["border-width"] = math.floor(width)
+  end
+  local background = value("menus", "background_opacity")
+  if background ~= nil then
+    keys["background-alpha"] = background
+  end
+  return keys
+end
+
+local MENU_KEYS = { "border", "border-alpha", "border-width", "background-alpha" }
+
+local function write_menus()
+  local wanted = menu_values()
+  local f = io.open(shell_file, "r")
+  local text = f and f:read("a") or ""
+  if f then
+    f:close()
+  end
+  local function toml(v)
+    if type(v) == "string" then
+      return '"' .. v .. '"'
+    end
+    return (string.format("%.3f", v):gsub("0+$", ""):gsub("%.$", ""))
+  end
+  local is_menu = {}
+  for _, sec in ipairs(MENU_SECTIONS) do
+    is_menu[sec] = true
+  end
+  local out, section, done = {}, nil, {}
+  local function finish(sec)
+    -- Keys still wanted in this section, added at its end.
+    if sec and is_menu[sec] then
+      for _, k in ipairs(MENU_KEYS) do
+        if wanted[k] ~= nil and not (done[sec] and done[sec][k]) then
+          -- Before trailing blank lines.
+          local at = #out + 1
+          while at > 1 and out[at - 1] == "" do
+            at = at - 1
+          end
+          table.insert(out, at, k .. " = " .. toml(wanted[k]))
+        end
+      end
+    end
+  end
+  local seen = {}
+  for line in (text .. (text:sub(-1) == "\n" and "" or "\n")):gmatch("([^\n]*)\n") do
+    local header = line:match("^%s*%[([%w._-]+)%]%s*$")
+    if header then
+      finish(section)
+      section = header
+      seen[header] = true
+      done[header] = done[header] or {}
+      out[#out + 1] = line
+    else
+      local key = section and is_menu[section] and line:match("^%s*([%w-]+)%s*=")
+      local ours = false
+      for _, k in ipairs(MENU_KEYS) do
+        if key == k then
+          ours = true
+        end
+      end
+      if ours then
+        if wanted[key] ~= nil and not done[section][key] then
+          out[#out + 1] = key .. " = " .. toml(wanted[key])
+          done[section][key] = true
+        end
+        -- (Not wanted: taken out.)
+      else
+        out[#out + 1] = line
+      end
+    end
+  end
+  finish(section)
+  -- Sections not there yet, when something is wanted.
+  if next(wanted) then
+    for _, sec in ipairs(MENU_SECTIONS) do
+      if not seen[sec] then
+        if #out > 0 and out[#out] ~= "" then
+          out[#out + 1] = ""
+        end
+        out[#out + 1] = "[" .. sec .. "]"
+        for _, k in ipairs(MENU_KEYS) do
+          if wanted[k] ~= nil then
+            out[#out + 1] = k .. " = " .. toml(wanted[k])
+          end
+        end
+      end
+    end
+  end
+  local new = table.concat(out, "\n")
+  while new:sub(-1) == "\n" do
+    new = new:sub(1, -2)
+  end
+  new = new .. "\n"
+  if new ~= text then
+    -- Written through, so a link (dotfiles) stays a link.
+    f = io.open(shell_file, "w")
+    if f then
+      f:write(new)
+      f:close()
+    end
   end
 end
 
@@ -480,7 +620,7 @@ end
 -- (a comment of yours in it isn't kept).
 local config_file = home .. "/.config/omarchy/window-style.lua"
 local ORDER = { "theme", "border", "border_size", "border_colour", "border_opacity", "border_colour_unfocused",
-  "border_opacity_unfocused", "rounding", "shadow", "opacity", "opacity_unfocused" }
+  "border_opacity_unfocused", "rounding", "shadow", "opacity", "opacity_unfocused", "background_opacity" }
 local function lua_value(v)
   if type(v) == "string" then
     return string.format("%q", v)

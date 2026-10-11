@@ -32,6 +32,7 @@ Scope {
     var list = [{ kind: "all", label: "All windows" }, { kind: "tiled", label: "Tiled" }, { kind: "floating", label: "Floating" }]
     if (present.sidebars) list.push({ kind: "sidebars", label: "Sidebars" })
     if (present.pinned) list.push({ kind: "pinned", label: "Pinned" })
+    list.push({ kind: "menus", label: "Menus" })
     return list
   }
 
@@ -54,7 +55,13 @@ Scope {
     { key: "shadow_size", label: "Shadow size", hint: "How far it reaches", type: "number", min: 1, max: 60, step: 1, unit: "px", global: true },
     { key: "shadow_opacity", label: "Shadow strength", hint: "0 is clear, 100 solid", type: "number", min: 0, max: 1, step: 0.05, unit: "%", global: true }
   ]
-  readonly property var rows: tab === "all" ? options.concat(shadowRows) : options
+  // Menus (Omarchy's shell draws them): the border, and how solid their
+  // background is; their rounding follows tiled windows'.
+  readonly property var menuKeys: ["theme", "border", "border_colour", "border_size", "border_opacity"]
+  readonly property var menuRows: options.filter(function(r) { return menuKeys.indexOf(r.key) >= 0 }).concat([
+    { key: "background_opacity", label: "Background opacity", hint: "Menus, launcher, popups and notifications; their rounding follows windows'", type: "number", min: 0.3, max: 1, step: 0.02, unit: "%" }
+  ])
+  readonly property var rows: tab === "all" ? options.concat(shadowRows) : tab === "menus" ? menuRows : options
   readonly property int count: rows.length + 1 // and the reset row
 
   function show(payload) {
@@ -134,7 +141,7 @@ Scope {
     else if (row.type === "enum") text = String(v)
     else if (row.type === "colour") { var c = colourOf(v); text = c ? c.label : String(v) }
     else if (row.type === "theme") text = v === "current" ? "current (" + themeLabel(currentTheme) + ")" : themeLabel(v)
-    else if (typeof v !== "number") text = row.key.indexOf("opacity") === 0 ? "Omarchy's" : "theme's"
+    else if (typeof v !== "number") text = row.key.indexOf("opacity") === 0 || row.key === "background_opacity" ? "Omarchy's" : "theme's"
     else text = row.unit === "%" ? Math.round(v * 100) + "%" : Math.round(v) + " px"
     if (l.from === "all") text += "  · all"
     else if (l.from === "omarchy" && tab !== "all" && !row.global) text += "  · Omarchy"
@@ -194,7 +201,7 @@ Scope {
       }
       v = colours[((at < 0 ? 0 : at + step) + colours.length) % colours.length].name
     } else {
-      if (typeof v !== "number") v = row.key.indexOf("opacity") === 0 ? 1 : row.min
+      if (typeof v !== "number") v = row.key.indexOf("opacity") === 0 || row.key === "background_opacity" ? 1 : row.min
       else v = Math.min(row.max, Math.max(row.min, Math.round((v + step * row.step) / row.step) * row.step))
       v = Math.round(v * 1000) / 1000
     }
