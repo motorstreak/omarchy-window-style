@@ -361,6 +361,8 @@ hl.on("window.close", function(window)
   end
 end)
 
+local write_menus -- defined with the menus, below
+
 local function apply()
   -- Tiled: Hyprland's own settings, Omarchy's where nothing is set.
   local width = border_width("tiled")
@@ -501,7 +503,7 @@ end
 
 local MENU_KEYS = { "border", "border-alpha", "border-width", "background-alpha" }
 
-local function write_menus()
+function write_menus()
   local wanted = menu_values()
   local f = io.open(shell_file, "r")
   local text = f and f:read("a") or ""
