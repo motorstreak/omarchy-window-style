@@ -42,9 +42,10 @@ Sidebars tab).
 - **Theme**, at the top of each tab: the Omarchy theme that kind takes its
   colours from, or "current" (the one in use). A sidebar given a theme of its
   own (the Sidebar plugin's `Super + Alt + T`) keeps that one.
-- Border colours come from the tab's theme, with a swatch: its own border
-  colour, its accent, its text colour, and the palette's six colours, plain and
-  bright. A palette colour follows the slot into other themes ("palette 2" is
+- Border colours come from the tab's theme, with a swatch: first "theme's
+  border", the border colours the theme itself sets (in its `hyprland.conf` or
+  its `colors.toml`, focused and unfocused), then its accent, its text colour,
+  and the palette's six colours, plain and bright. A palette colour follows the slot into other themes ("palette 2" is
   green in most), also in themes that only name their colours.
 - The bottom row resets the tab (on All windows: everything, back to Omarchy's
   look). Press it twice.

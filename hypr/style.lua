@@ -222,10 +222,51 @@ local function theme_colors_of(name)
   end
 end
 
--- A theme's own border colours (as Omarchy makes them from its colors.toml):
--- its hyprland_active_border (the first colour of it), else its accent; and
--- its hyprland_inactive_border, else Omarchy's grey.
-local function own_border(colors)
+-- Another theme's hyprland.conf, as text, where it has one: many set their
+-- border colours there rather than in colors.toml.
+local function theme_conf_of(name)
+  for _, root in ipairs({ home .. "/.config/omarchy/themes/", omarchy_path .. "/themes/" }) do
+    if io.open(root .. name .. "/colors.toml", "r") then
+      local f = io.open(root .. name .. "/hyprland.conf", "r")
+      if f == nil then
+        return nil
+      end
+      local text = "\n" .. f:read("a")
+      f:close()
+      return text
+    end
+  end
+end
+
+-- The first colour of a border option in a theme's hyprland.conf, through a
+-- $variable if it names one: "rrggbb" and alpha (0-255).
+local function conf_border(conf, option)
+  local spec = conf and conf:match("\n[ \t]*col%." .. option .. "[ \t]*=[ \t]*([^\n#]+)")
+  local var = spec and spec:match("^%$([%w_]+)")
+  if var then
+    spec = conf:match("\n[ \t]*%$" .. var .. "[ \t]*=[ \t]*([^\n#]+)")
+  end
+  if spec == nil then
+    return nil
+  end
+  local rgb, alpha = spec:match("rgba%((%x%x%x%x%x%x)(%x%x)%)")
+  if rgb == nil then
+    rgb = spec:match("rgb%((%x%x%x%x%x%x)%)")
+    alpha = "ff"
+  end
+  if rgb == nil then
+    alpha, rgb = spec:match("0[xX](%x%x)(%x%x%x%x%x%x)")
+  end
+  if rgb then
+    return rgb, tonumber(alpha, 16)
+  end
+end
+
+-- A theme's own border colours: those its hyprland.conf sets, else (as
+-- Omarchy makes them from its colors.toml) its hyprland_active_border (the
+-- first colour of it), else its accent; and its hyprland_inactive_border,
+-- else Omarchy's grey.
+local function own_border(colors, conf)
   local function first(key)
     local spec = colors:match("\n%s*" .. key .. '%s*=%s*"([^"]*)"')
     local rgb, alpha = spec and spec:match("rgba?%((%x%x%x%x%x%x)(%x?%x?)%)")
@@ -233,11 +274,17 @@ local function own_border(colors)
       return rgb, alpha ~= "" and tonumber(alpha, 16) or 255
     end
   end
-  local a = { first("hyprland_active_border") }
+  local a = { conf_border(conf, "active_border") }
+  if a[1] == nil then
+    a = { first("hyprland_active_border") }
+  end
   if a[1] == nil then
     a = { colors:match('\n%s*accent%s*=%s*"#?(%x%x%x%x%x%x)"'), 255 }
   end
-  local i = { first("hyprland_inactive_border") }
+  local i = { conf_border(conf, "inactive_border") }
+  if i[1] == nil then
+    i = { first("hyprland_inactive_border") }
+  end
   if i[1] == nil then
     i = { "595959", 170 }
   end
@@ -254,7 +301,7 @@ local function kind_colors(kind, colors)
   if colors == nil then
     return theme_colors, theme_active, theme_inactive
   end
-  local a, i = own_border(colors)
+  local a, i = own_border(colors, name and name ~= "current" and theme_conf_of(name) or nil)
   return colors, a, i
 end
 
@@ -747,7 +794,7 @@ local function open(tab, index)
           json_string(label), json_string("#" .. hex))
       end
     end
-    add("theme", "theme's own", a[1])
+    add("theme", "theme's border", a[1])
     add("accent", "accent", colour_in(colors, "accent"))
     add("foreground", "text colour", colour_in(colors, "foreground"))
     for n = 1, 6 do
