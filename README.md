@@ -49,7 +49,8 @@ Sidebars tab).
   and the palette's six colours, plain and bright. A palette colour follows the slot into other themes ("palette 2" is
   green in most), also in themes that only name their colours.
 - The bottom row resets the tab (on All windows: everything, back to Omarchy's
-  look). Press it twice.
+  look): `Enter` (or a click) twice; the arrows never reset. It's greyed out,
+  and skipped, when the tab has nothing set.
 
 The **Menus** tab styles Omarchy's own menus, launcher, popups and
 notifications: theme, border, its colour, width and opacity, and how solid

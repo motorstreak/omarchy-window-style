@@ -66,6 +66,20 @@ Scope {
   ])
   readonly property var rows: tab === "all" ? options.concat(shadowRows) : tab === "menus" ? menuRows : options
   readonly property int count: rows.length + 1 // and the reset row
+  // Whether the reset row has anything to do: an option set on this tab (on
+  // All windows: on any tab, or the shadow look changed).
+  readonly property bool resettable: {
+    function set(kind) {
+      var k = kinds[kind] || {}
+      for (var o in k) if (k[o] !== null && k[o] !== undefined) return true
+      return false
+    }
+    if (tab !== "all") return set(tab)
+    for (var kind in kinds) if (set(kind)) return true
+    return shadow.look !== undefined && (shadow.look !== "glow" || shadow.size !== 6 || shadow.opacity !== 0.2)
+  }
+  // The last row ↓ reaches: the reset row only when it can do something.
+  readonly property int lastIndex: resettable ? rows.length : rows.length - 1
 
   function show(payload) {
     var p = JSON.parse(payload)
@@ -79,7 +93,7 @@ Scope {
     omarchy = p.omarchy || {}
     shadow = p.shadow || {}
     tab = tabs.some(function(t) { return t.kind === p.tab }) ? p.tab : "all"
-    index = Math.max(0, Math.min(Number(p.index) || 0, count - 1))
+    index = Math.max(0, Math.min(Number(p.index) || 0, lastIndex))
     confirming = false
     open = true
     keys.forceActiveFocus()
@@ -229,12 +243,14 @@ Scope {
       k[tab] = {}
     }
     kinds = k
+    index = rows.length - 1
     Quickshell.execDetached(["hyprctl", "eval", "window_style.reset('" + (tab === "all" ? "everything" : tab) + "')"])
     confirming = false
   }
 
   function activate(step) {
     if (index >= rows.length) {
+      if (!resettable) return
       if (confirming) reset()
       else confirming = true
     } else {
@@ -248,7 +264,7 @@ Scope {
       if (tabs[j].kind === tab) i = j
     }
     tab = tabs[(i + step + tabs.length) % tabs.length].kind
-    index = Math.min(index, count - 1)
+    index = Math.min(index, lastIndex)
     confirming = false
   }
 
@@ -324,11 +340,12 @@ Scope {
             root.index = Math.max(0, root.index - 1)
             root.confirming = false
           } else if (event.key === Qt.Key_Down) {
-            root.index = Math.min(root.count - 1, root.index + 1)
-          } else if (event.key === Qt.Key_Left) {
-            if (root.index < root.rows.length) root.activate(-1)
-          } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Space
-              || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            root.index = Math.min(root.lastIndex, root.index + 1)
+          } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
+            // Only changes a value: the reset row takes Enter, Space or a
+            // click, so arrows held past the last row reset nothing.
+            if (root.index < root.rows.length) root.activate(event.key === Qt.Key_Left ? -1 : 1)
+          } else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             root.activate(1)
           } else if (event.key === Qt.Key_Backspace || event.key === Qt.Key_Delete) {
             if (root.index < root.rows.length) root.clear(root.rows[root.index])
@@ -393,7 +410,7 @@ Scope {
                 anchors.fill: parent
                 onClicked: {
                   root.tab = modelData.kind
-                  root.index = Math.min(root.index, root.count - 1)
+                  root.index = Math.min(root.index, root.lastIndex)
                   root.confirming = false
                 }
               }
@@ -493,13 +510,16 @@ Scope {
           height: Math.max(Style.space(40), Style.font.body + Style.spacing.rowPaddingX * 2)
           radius: Style.cornerRadius
           color: current ? Color.menu.selectedBackground : "transparent"
+          // Nothing set here: nothing to reset.
+          opacity: root.resettable ? 1 : 0.35
 
           Text {
             anchors.left: parent.left
             anchors.leftMargin: Style.space(14)
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: root.confirming ? "Press again to reset " + (root.tab === "all" ? "every tab" : "this tab")
+            text: !root.resettable ? (root.tab === "all" ? "Nothing to reset: Omarchy's look" : "Nothing to reset: all windows' look")
+                : root.confirming ? "Press again to reset " + (root.tab === "all" ? "every tab" : "this tab")
                                   : (root.tab === "all" ? "Reset everything to Omarchy's look" : "Reset this tab to all windows'")
             color: parent.current ? Color.menu.selectedText : Color.menu.text
             font.family: Style.font.menuFamily
@@ -510,6 +530,7 @@ Scope {
           MouseArea {
             anchors.fill: parent
             onClicked: {
+              if (!root.resettable) return
               root.index = root.rows.length
               root.activate(1)
             }
@@ -520,7 +541,7 @@ Scope {
           width: parent.width
           topPadding: Style.space(8)
           textFormat: Text.PlainText
-          text: "Tab next tab · ↑↓ choose · ←→ change · ⌫ back to " + (root.tab === "all" ? "Omarchy's" : "all windows'") + " · Esc close"
+          text: "Tab next tab · ↑↓ choose · ←→ change · ⌫ back to " + (root.tab === "all" ? "Omarchy's" : "all windows'") + " · Enter on reset · Esc close"
           color: Color.menu.text
           opacity: 0.45
           font.family: Style.font.menuFamily
