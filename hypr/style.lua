@@ -814,6 +814,7 @@ window_style = {
   reset = reset,
   open = open,
   apply = apply,
+  write_menus = write_menus,
 }
 
 -- Sidebars and pinned windows already styled before this loaded get these
