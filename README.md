@@ -56,7 +56,8 @@ notifications: theme, border, its colour, width and opacity, and how solid
 their background is. They aren't windows, so it writes these into
 `~/.config/omarchy/shell.toml` (its `[menu]`, `[launcher]`, `[popups]` and
 `[notifications]` sections; everything else there is left alone), which the
-shell picks up at once. Their rounding follows the windows'.
+shell picks up at once. Their rounding is shown but not set there: the shell
+has one rounding for everything it draws, tiled windows'.
 
 Shadows have one look for every window, as Hyprland allows only one: set it on
 All windows (a **glow** in the accent colour, or a faint dark **shadow**, its

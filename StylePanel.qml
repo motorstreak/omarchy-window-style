@@ -57,10 +57,12 @@ Scope {
     { key: "shadow_opacity", label: "Shadow strength", hint: "0 is clear, 100 solid", type: "number", min: 0, max: 1, step: 0.05, unit: "%", global: true }
   ]
   // Menus (Omarchy's shell draws them): the border, and how solid their
-  // background is; their rounding follows tiled windows'.
+  // background is. Their rounding is shown, not set: the shell has one
+  // rounding for all it draws, tiled windows' (Hyprland's own).
   readonly property var menuKeys: ["theme", "border", "border_colour", "border_size", "border_opacity"]
   readonly property var menuRows: options.filter(function(r) { return menuKeys.indexOf(r.key) >= 0 }).concat([
-    { key: "background_opacity", label: "Background opacity", hint: "Menus, launcher, popups and notifications; their rounding follows windows'", type: "number", min: 0.3, max: 1, step: 0.02, unit: "%" }
+    { key: "background_opacity", label: "Background opacity", hint: "Menus, launcher, popups and notifications", type: "number", min: 0.3, max: 1, step: 0.02, unit: "%" },
+    { key: "rounding", label: "Rounding", hint: "Always tiled windows': set it there (or on All windows)", type: "number", unit: "px", follows: "tiled" }
   ])
   readonly property var rows: tab === "all" ? options.concat(shadowRows) : tab === "menus" ? menuRows : options
   readonly property int count: rows.length + 1 // and the reset row
@@ -102,9 +104,11 @@ Scope {
       var g = { shadow_look: shadow.look, shadow_size: shadow.size, shadow_opacity: shadow.opacity }[row.key]
       return { value: g, from: "own" }
     }
-    var own = (kinds[tab] || {})[row.key]
-    if (own !== null && own !== undefined) return { value: own, from: "own" }
-    if (tab !== "all") {
+    // A row another kind's value shows (a menus' rounding: tiled windows').
+    var kind = row.follows || tab
+    var own = (kinds[kind] || {})[row.key]
+    if (own !== null && own !== undefined) return { value: own, from: row.follows ? row.follows : "own" }
+    if (kind !== "all") {
       var all = (kinds.all || {})[row.key]
       if (all !== null && all !== undefined) return { value: all, from: "all" }
     }
@@ -144,7 +148,8 @@ Scope {
     else if (row.type === "theme") text = v === "current" ? "Omarchy's (" + themeLabel(currentTheme) + ")" : themeLabel(v)
     else if (typeof v !== "number") text = row.key.indexOf("opacity") === 0 || row.key === "background_opacity" ? "Omarchy's" : "theme's"
     else text = row.unit === "%" ? Math.round(v * 100) + "%" : Math.round(v) + " px"
-    if (l.from === "all") text += "  · all"
+    if (row.follows && l.from === row.follows) text += "  · " + row.follows
+    else if (l.from === "all") text += "  · all"
     else if (l.from === "omarchy" && tab !== "all" && !row.global) text += "  · Omarchy"
     return text
   }
@@ -184,7 +189,7 @@ Scope {
   }
 
   function change(row, step) {
-    if (!enabled(row)) return
+    if (!enabled(row) || row.follows) return
     var v = lookup(row).value
     if (row.type === "bool") {
       v = !(v === true)
@@ -211,7 +216,7 @@ Scope {
 
   // Back to all windows' value (or Omarchy's, on All windows).
   function clear(row) {
-    if (row.global || lookup(row).from !== "own") return
+    if (row.global || row.follows || lookup(row).from !== "own") return
     store(row.key, null, false)
   }
 
@@ -460,7 +465,7 @@ Scope {
               anchors.rightMargin: Style.space(14)
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: { root.kinds; root.shadow; root.tab; return (row.modelData.type === "bool" ? "" : "‹  ") + root.shown(row.modelData) + (row.modelData.type === "bool" ? "" : "  ›") }
+              text: { root.kinds; root.shadow; root.tab; var arrows = row.modelData.type !== "bool" && !row.modelData.follows; return (arrows ? "‹  " : "") + root.shown(row.modelData) + (arrows ? "  ›" : "") }
               color: row.current ? Color.menu.selectedText : Color.menu.text
               // Inherited: dimmed.
               opacity: row.source.from === "own" ? 1 : 0.5
