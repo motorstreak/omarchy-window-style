@@ -256,6 +256,9 @@ Scope {
     target: "window-style-panel"
     function open(payload: string): string { root.show(payload); return "ok" }
     function close(): string { root.open = false; return "ok" }
+    // Omarchy's shell takes its rounding from Hyprland's, but reads it only
+    // on a theme change; hypr/style.lua asks after setting it.
+    function restyle(): string { Style.scheduleRefresh(); return "ok" }
     function state(): string { return (root.open ? "open " : "closed ") + root.tab + " " + root.index + " " + JSON.stringify(root.kinds[root.tab] || {}) }
   }
 

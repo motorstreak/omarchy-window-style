@@ -409,6 +409,7 @@ hl.on("window.close", function(window)
 end)
 
 local write_menus -- defined with the menus, below
+local shell_rounding -- the rounding the shell was last told of
 
 local function apply()
   -- Tiled: Hyprland's own settings, Omarchy's where nothing is set.
@@ -421,8 +422,14 @@ local function apply()
     border_size = math.floor(width or omarchy_border_size),
     col = { active_border = active or theme_rgba(theme_active), inactive_border = inactive or theme_rgba(theme_inactive) },
   } })
-  local rounding = value("tiled", "rounding")
-  hl.config({ decoration = { rounding = math.floor(rounding or omarchy_rounding) } })
+  local rounding = math.floor(value("tiled", "rounding") or omarchy_rounding)
+  hl.config({ decoration = { rounding = rounding } })
+  -- The shell's menus and panels round as Hyprland does, but it reads that
+  -- only on a theme change: tell it.
+  if rounding ~= shell_rounding then
+    shell_rounding = rounding
+    hl.exec_cmd("omarchy-shell -q window-style-panel restyle")
+  end
   local o_tiled = opacity_of("tiled")
   if o_tiled then
     rule("window-style-tiled-opacity", { match = { tag = "default-opacity", float = false }, opacity = o_tiled })
