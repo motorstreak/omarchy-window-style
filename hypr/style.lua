@@ -191,6 +191,10 @@ local function theme_border(option)
 end
 local theme_active = { theme_border("general:col.active_border") }
 local theme_inactive = { theme_border("general:col.inactive_border") }
+-- Omarchy's own width and rounding, likewise, for an option set and then
+-- taken out again.
+local omarchy_border_size = tonumber(hl.get_config("general:border_size")) or 2
+local omarchy_rounding = tonumber(hl.get_config("decoration:rounding")) or 0
 
 -- A kind's border colours as Hyprland takes them: "rgba(rrggbbaa)", focused and
 -- unfocused; nil for one left as it is.
@@ -228,28 +232,20 @@ local function border_width(kind)
   return value(kind, "border_size")
 end
 
--- Tiled: Hyprland's settings ------------------------------------------------------
+-- Applying ----------------------------------------------------------------------
+--
+-- Everything is applied by `apply`, again after every change from the settings
+-- panel: Hyprland's settings for tiled windows, named rules (made again under
+-- the same name, which replaces them at once, or turned off), the rounding of
+-- each floating window, the shadow switch, and sidebars and pinned windows
+-- through their plugins.
 
-do
-  local general, decoration = {}, {}
-  local width = border_width("tiled")
-  if width then
-    general.border_size = math.floor(width)
-  end
-  local active, inactive = border_colours("tiled")
-  if active or inactive then
-    general.col = { active_border = active, inactive_border = inactive }
-  end
-  local rounding = value("tiled", "rounding")
-  if rounding then
-    decoration.rounding = math.floor(rounding)
-  end
-  if next(general) then
-    hl.config({ general = general })
-  end
-  if next(decoration) then
-    hl.config({ decoration = decoration })
-  end
+local function rule(name, spec)
+  spec.name = name
+  hl.window_rule(spec)
+end
+local function no_rule(name)
+  hl.window_rule({ name = name, enabled = false, match = { class = "^$" } })
 end
 
 -- Omarchy makes windows slightly see-through with a rule on the windows tagged
@@ -264,123 +260,134 @@ local function opacity_of(kind)
   i = i or a
   return string.format("%.3f %.3f", math.max(0.1, math.min(1, a)), math.max(0.1, math.min(1, i)))
 end
-do
-  local o_tiled = opacity_of("tiled")
-  if o_tiled then
-    hl.window_rule({ name = "window-style-tiled-opacity", match = { tag = "default-opacity", float = false },
-      opacity = o_tiled })
-  end
-end
-
--- Floating: a rule, and rounding per window ---------------------------------------
 
 -- What floating windows change from tiled ones.
 local function differs(option)
   return value("floating", option) ~= value("tiled", option)
 end
 
-do
-  local rule = {}
-  if differs("border") or differs("border_size") then
-    local width = border_width("floating")
-    if width then
-      rule.border_size = math.floor(width)
-    end
-  end
-  if differs("border_colour") or differs("border_colour_unfocused")
-      or differs("border_opacity") or differs("border_opacity_unfocused") then
-    local active, inactive = border_colours("floating")
-    -- A rule sets both: one left as it is is the tiled one.
-    local tiled_active, tiled_inactive = border_colours("tiled")
-    active = active or tiled_active
-    inactive = inactive or tiled_inactive
-    if active then
-      rule.border_color = active .. " " .. (inactive or active)
-    end
-  end
-  if next(rule) then
-    rule.name = "window-style-floating"
-    rule.match = { float = true }
-    hl.window_rule(rule)
-  end
-  local o_floating = opacity_of("floating")
-  if o_floating and (differs("opacity") or differs("opacity_unfocused")) then
-    hl.window_rule({ name = "window-style-floating-opacity", match = { tag = "default-opacity", float = true },
-      opacity = o_floating })
-  end
-end
-
 -- Rounding: a rule can't go past 20, and Omarchy's popped-out windows (SUPER +
 -- O) have a rule of their own. So each floating window gets it set, and loses
 -- it again once tiled. Sidebars are the Sidebar plugin's.
 local rounded = {} -- address -> true: set here
-local function floating_rounding()
-  local r = value("floating", "rounding")
-  return r and math.floor(r) or nil
-end
-
 local function is_sidebar(window)
   local ws = window.workspace and window.workspace.name or ""
   return ws:match("^special:sidebar%d*$") ~= nil
 end
-
 local function round(window)
-  local r = floating_rounding()
-  if window == nil or r == nil or is_sidebar(window) then
+  if window == nil or is_sidebar(window) then
     return
   end
+  local r = value("floating", "rounding")
   local selector = "address:" .. window.address
-  if window.floating then
-    hl.dispatch(hl.dsp.window.set_prop({ prop = "rounding", value = tostring(r), window = selector }))
+  if window.floating and r then
+    hl.dispatch(hl.dsp.window.set_prop({ prop = "rounding", value = tostring(math.floor(r)), window = selector }))
     rounded[window.address] = true
   elseif rounded[window.address] then
     hl.dispatch(hl.dsp.window.set_prop({ prop = "rounding", value = "unset", window = selector }))
     rounded[window.address] = nil
   end
 end
+hl.on("window.update_rules", guard("rounding a floating window", round))
+hl.on("window.close", function(window)
+  if window and window.address then
+    rounded[window.address] = nil
+  end
+end)
 
-if floating_rounding() then
-  hl.on("window.update_rules", guard("rounding a floating window", round))
-  hl.on("window.close", function(window)
-    if window and window.address then
-      rounded[window.address] = nil
+local function apply()
+  -- Tiled: Hyprland's own settings, Omarchy's where nothing is set.
+  local width = border_width("tiled")
+  local active, inactive = border_colours("tiled")
+  local function theme_rgba(t)
+    return t[1] and string.format("rgba(%s%02x)", t[1], t[2] or 255) or nil
+  end
+  hl.config({ general = {
+    border_size = math.floor(width or omarchy_border_size),
+    col = { active_border = active or theme_rgba(theme_active), inactive_border = inactive or theme_rgba(theme_inactive) },
+  } })
+  local rounding = value("tiled", "rounding")
+  hl.config({ decoration = { rounding = math.floor(rounding or omarchy_rounding) } })
+  local o_tiled = opacity_of("tiled")
+  if o_tiled then
+    rule("window-style-tiled-opacity", { match = { tag = "default-opacity", float = false }, opacity = o_tiled })
+  else
+    no_rule("window-style-tiled-opacity")
+  end
+
+  -- Floating: a rule for what differs from tiled.
+  local spec = {}
+  if differs("border") or differs("border_size") then
+    local w = border_width("floating")
+    spec.border_size = math.floor(w or omarchy_border_size)
+  end
+  if differs("border_colour") or differs("border_colour_unfocused")
+      or differs("border_opacity") or differs("border_opacity_unfocused") then
+    local a, i = border_colours("floating")
+    a = a or active or theme_rgba(theme_active)
+    i = i or inactive or theme_rgba(theme_inactive)
+    if a then
+      spec.border_color = a .. " " .. (i or a)
     end
-  end)
+  end
+  if next(spec) then
+    spec.match = { float = true }
+    rule("window-style-floating", spec)
+  else
+    no_rule("window-style-floating")
+  end
+  local o_floating = opacity_of("floating")
+  if o_floating and (differs("opacity") or differs("opacity_unfocused")) then
+    rule("window-style-floating-opacity", { match = { tag = "default-opacity", float = true }, opacity = o_floating })
+  else
+    no_rule("window-style-floating-opacity")
+  end
   for _, w in ipairs(hl.get_windows()) do
     guard("rounding a floating window", round)(w)
   end
-end
 
--- Shadows -------------------------------------------------------------------------
-
--- Hyprland has one shadow switch and look for every window. When any kind wants
--- one: on, in the chosen look, with a rule taking it off every window and
--- others giving it back to tiled or floating ones; sidebars and pinned windows
--- get theirs back from their plugins. Otherwise off, also when another plugin
--- had turned it on before this loaded.
-local shadow_tiled, shadow_floating = value("tiled", "shadow") == true, value("floating", "shadow") == true
-local any_shadow = shadow_tiled or shadow_floating or value("sidebars", "shadow") == true
-  or value("pinned", "shadow") == true
-if not any_shadow then
-  hl.config({ decoration = { shadow = { enabled = false } } })
-else
-  local alpha = string.format("%02x", math.floor(math.max(0, math.min(1, config.shadow_opacity)) * 255 + 0.5))
-  local look
-  if config.shadow_look == "glow" then
-    local rgb = colour_in(theme_colors, "accent") or theme_active[1] or "000000"
-    look = { enabled = true, range = math.floor(config.shadow_size), render_power = 3, offset = { 0, 0 },
-      color = "rgba(" .. rgb .. alpha .. ")", color_inactive = "rgba(" .. rgb .. "00)" }
+  -- Shadows. Hyprland has one switch and look for every window. When any kind
+  -- wants one: on, in the chosen look, with a rule taking it off every window
+  -- and others giving it back to tiled or floating ones; sidebars and pinned
+  -- windows get theirs back from their plugins. Otherwise off (also when
+  -- another plugin had turned it on).
+  local shadow_tiled, shadow_floating = value("tiled", "shadow") == true, value("floating", "shadow") == true
+  local any = shadow_tiled or shadow_floating or value("sidebars", "shadow") == true
+    or value("pinned", "shadow") == true
+  if any then
+    local alpha = string.format("%02x", math.floor(math.max(0, math.min(1, config.shadow_opacity)) * 255 + 0.5))
+    local look
+    if config.shadow_look == "glow" then
+      local rgb = colour_in(theme_colors, "accent") or theme_active[1] or "000000"
+      look = { enabled = true, range = math.floor(config.shadow_size), render_power = 3, offset = { 0, 0 },
+        color = "rgba(" .. rgb .. alpha .. ")", color_inactive = "rgba(" .. rgb .. "00)" }
+    else
+      look = { enabled = true, range = math.floor(config.shadow_size), render_power = 2, offset = { 0, 0 },
+        color = "rgba(000000" .. alpha .. ")", color_inactive = "rgba(000000" .. alpha .. ")" }
+    end
+    hl.config({ decoration = { shadow = look } })
+    rule("window-style-no-shadow", { match = { class = ".*" }, no_shadow = true })
   else
-    look = { enabled = true, range = math.floor(config.shadow_size), render_power = 2, offset = { 0, 0 },
-      color = "rgba(000000" .. alpha .. ")" }
+    hl.config({ decoration = { shadow = { enabled = false } } })
+    no_rule("window-style-no-shadow")
   end
-  hl.config({ decoration = { shadow = look } })
-  hl.window_rule({ name = "window-style-no-shadow", match = { class = ".*" }, no_shadow = true })
-  if shadow_tiled then
-    hl.window_rule({ name = "window-style-tiled-shadow", match = { float = false }, no_shadow = false })
+  if any and shadow_tiled then
+    rule("window-style-tiled-shadow", { match = { float = false }, no_shadow = false })
+  else
+    no_rule("window-style-tiled-shadow")
   end
-  if shadow_floating then
-    hl.window_rule({ name = "window-style-floating-shadow", match = { float = true }, no_shadow = false })
+  if any and shadow_floating then
+    rule("window-style-floating-shadow", { match = { float = true }, no_shadow = false })
+  else
+    no_rule("window-style-floating-shadow")
+  end
+
+  -- Sidebars and pinned windows: their plugins style them, asking `look`.
+  if type(sidebar) == "table" and sidebar.retheme then
+    sidebar.retheme()
+  end
+  if type(dock) == "table" and dock.restyle then
+    dock.restyle()
   end
 end
 
@@ -404,16 +411,178 @@ local function look(kind, colors)
   }
 end
 
--- For the plugins, the settings panel (later) and tests.
+-- Saving --------------------------------------------------------------------------
+
+-- The file is this plugin's: written whole on every change from the panel
+-- (a comment of yours in it isn't kept).
+local config_file = home .. "/.config/omarchy/window-style.lua"
+local ORDER = { "border", "border_size", "border_colour", "border_opacity", "border_colour_unfocused",
+  "border_opacity_unfocused", "rounding", "shadow", "opacity", "opacity_unfocused" }
+local function lua_value(v)
+  if type(v) == "string" then
+    return string.format("%q", v)
+  elseif type(v) == "number" then
+    return (string.format("%.3f", v):gsub("0+$", ""):gsub("%.$", ""))
+  end
+  return tostring(v)
+end
+local function save()
+  local lines = {
+    "-- Window Style plugin: how windows look. Written by its settings panel",
+    "-- (SUPER + CTRL + ALT + S); edits here work too. `all` is every window; each",
+    "-- kind sets only what differs from it.",
+    "return {",
+  }
+  for _, kind in ipairs(KINDS) do
+    local set = {}
+    for _, option in ipairs(ORDER) do
+      if config[kind][option] ~= nil then
+        set[#set + 1] = "    " .. option .. " = " .. lua_value(config[kind][option]) .. ","
+      end
+    end
+    if #set > 0 then
+      lines[#lines + 1] = "  " .. kind .. " = {"
+      for _, l in ipairs(set) do
+        lines[#lines + 1] = l
+      end
+      lines[#lines + 1] = "  },"
+    end
+  end
+  for _, k in ipairs({ "shadow_look", "shadow_size", "shadow_opacity" }) do
+    if config[k] ~= defaults[k] then
+      lines[#lines + 1] = "  " .. k .. " = " .. lua_value(config[k]) .. ","
+    end
+  end
+  lines[#lines + 1] = "}"
+  -- Written through, so a link (dotfiles) stays a link.
+  local f = io.open(config_file, "w")
+  if f then
+    f:write(table.concat(lines, "\n"), "\n")
+    f:close()
+  end
+end
+
+-- One change from the panel: applied at once, then saved. `option` nil-valued
+-- (`value` nil) takes it out, back to all windows' (or Omarchy's).
+local function set(kind, option, v)
+  if config[kind] ~= nil and OPTIONS[option] then
+    if v ~= nil and type(v) ~= OPTIONS[option] then
+      return
+    end
+    config[kind][option] = v
+  elseif option == nil and (kind == "shadow_look" or kind == "shadow_size" or kind == "shadow_opacity") then
+    if type(v) ~= type(defaults[kind]) then
+      return
+    end
+    config[kind] = v
+  else
+    return
+  end
+  apply()
+  save()
+end
+
+-- A kind (or everything, for "everything") back to as if nothing were set.
+local function reset(kind)
+  if kind == "everything" then
+    for _, k in ipairs(KINDS) do
+      config[k] = {}
+    end
+    for _, k in ipairs({ "shadow_look", "shadow_size", "shadow_opacity" }) do
+      config[k] = defaults[k]
+    end
+  elseif config[kind] ~= nil then
+    config[kind] = {}
+  else
+    return
+  end
+  apply()
+  save()
+end
+
+-- The settings panel -----------------------------------------------------------------
+
+local function json_string(v)
+  return '"' .. tostring(v):gsub('[%c"\\]', function(c)
+    return string.format("\\u%04x", c:byte())
+  end) .. '"'
+end
+local function json(v)
+  if type(v) == "string" then
+    return json_string(v)
+  elseif type(v) == "number" then
+    return string.format("%.4g", v)
+  elseif type(v) == "boolean" then
+    return tostring(v)
+  end
+  return "null"
+end
+
+-- SUPER + CTRL + ALT + S (or the Sidebar plugin's settings): StylePanel.qml with
+-- every kind's options as set (null: from all windows, or Omarchy's), and the
+-- theme's colours to pick from. `tab` opens it on that kind.
+local function open(tab)
+  local kinds = {}
+  for _, kind in ipairs(KINDS) do
+    local parts = {}
+    for _, option in ipairs(ORDER) do
+      parts[#parts + 1] = json_string(option) .. ":" .. json(config[kind][option])
+    end
+    kinds[#kinds + 1] = json_string(kind) .. ":{" .. table.concat(parts, ",") .. "}"
+  end
+  local colours = {}
+  local function add(name, label, hex)
+    if hex then
+      colours[#colours + 1] = string.format('{"name":%s,"label":%s,"hex":%s}', json_string(name),
+        json_string(label), json_string("#" .. hex))
+    end
+  end
+  add("theme", "theme's own", theme_active[1])
+  add("accent", "accent", colour_in(theme_colors, "accent"))
+  add("foreground", "text colour", colour_in(theme_colors, "foreground"))
+  for i = 1, 6 do
+    add("color" .. i, "palette " .. i, colour_in(theme_colors, "color" .. i))
+  end
+  for i = 9, 14 do
+    add("color" .. i, "bright " .. (i - 8), colour_in(theme_colors, "color" .. i))
+  end
+  local present = {
+    '"sidebars":' .. tostring(type(sidebar) == "table"),
+    '"pinned":' .. tostring(type(dock) == "table"),
+  }
+  local m = hl.get_active_monitor()
+  local payload = string.format(
+    '{"monitor":%s,"tab":%s,"kinds":{%s},"present":{%s},"colours":[%s],"theme_unfocused":%s,'
+      .. '"omarchy":{"border_size":%d,"rounding":%d},"shadow":{"look":%s,"size":%s,"opacity":%s}}',
+    json_string(m and m.name or ""), json_string(tab or "all"), table.concat(kinds, ","),
+    table.concat(present, ","), table.concat(colours, ","),
+    json_string(theme_inactive[1] and ("#" .. theme_inactive[1]) or ""),
+    omarchy_border_size, omarchy_rounding,
+    json(config.shadow_look), json(config.shadow_size), json(config.shadow_opacity))
+  hl.exec_cmd("omarchy-shell -q window-style-panel open " .. quote(payload))
+end
+
+local PANEL_KEY = "SUPER + CTRL + ALT + S"
+hl.unbind(PANEL_KEY)
+o.bind(PANEL_KEY, "Window style", guard("opening the window style", function()
+  open("all")
+end))
+
+-- For the plugins, the settings panel and tests.
 window_style = {
   look = look,
   value = value,
   border_colours = border_colours,
   config = config,
+  set = set,
+  reset = reset,
+  open = open,
+  apply = apply,
 }
 
--- Sidebars and pinned windows already styled before this loaded: again, now
--- with these looks.
+-- Sidebars and pinned windows already styled before this loaded get these
+-- looks once the others have loaded too.
+guard("applying the window style", apply)()
 hl.timer(guard("restyling sidebars and pinned windows", function()
   if type(sidebar) == "table" and sidebar.retheme then
     sidebar.retheme()
