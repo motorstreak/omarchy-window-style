@@ -10,8 +10,12 @@
 --   floating   a window rule for floating windows, and the rounding set on
 --              each one as it floats (rules can't round past 20)
 --
--- Sidebars (the Sidebar plugin) and pinned windows (the Dock plugin) style
--- their own windows for now.
+--   sidebars   (the Sidebar plugin) and
+--   pinned     (the Dock plugin) style their windows when they take them in,
+--              asking `window_style.look(kind)` for how
+--
+-- Shadows are this plugin's alone: Hyprland has one switch and look for every
+-- window, which the Sidebar and Dock plugins leave to it when it's installed.
 --
 -- Loaded into the running Hyprland by Service.qml with WINDOW_STYLE_DIR set to
 -- the plugin folder. Options are set in ~/.config/omarchy/window-style.lua (a
@@ -71,12 +75,14 @@ local OPTIONS = {
   opacity = "number", -- the window itself, 0.1 to 1
   opacity_unfocused = "number",
 }
-local KINDS = { "all", "tiled", "floating" }
+local KINDS = { "all", "tiled", "floating", "sidebars", "pinned" }
 
 local defaults = {
   all = {},
   tiled = {},
   floating = {},
+  sidebars = {},
+  pinned = {},
   -- One shadow look for every window (Hyprland has one): "glow", in the
   -- theme's accent colour, or "shadow", large, faint and dark.
   shadow_look = "glow",
@@ -84,7 +90,7 @@ local defaults = {
   shadow_opacity = 0.2, -- 0 (clear) to 1 (solid)
 }
 
-local config = { all = {}, tiled = {}, floating = {} }
+local config = { all = {}, tiled = {}, floating = {}, sidebars = {}, pinned = {} }
 for k, v in pairs(defaults) do
   if type(v) ~= "table" then
     config[k] = v
@@ -122,8 +128,6 @@ do
           end
         end
       end
-    elseif k == "sidebars" or k == "pinned" then
-      -- (Read by the Sidebar and Dock plugins.)
     elseif config[k] == nil then
       problems[#problems + 1] = "unknown option " .. tostring(k)
     elseif type(v) ~= type(config[k]) then
@@ -190,14 +194,15 @@ local theme_inactive = { theme_border("general:col.inactive_border") }
 
 -- A kind's border colours as Hyprland takes them: "rgba(rrggbbaa)", focused and
 -- unfocused; nil for one left as it is.
-local function border_colours(kind)
+local function border_colours(kind, colors)
+  colors = colors or theme_colors
   local function one(name, opacity, theme)
     if name == nil and opacity == nil then
       return nil
     end
     local rgb, alpha = theme[1], theme[2]
     if name ~= nil and name ~= "theme" then
-      rgb = colour_in(theme_colors, name)
+      rgb = colour_in(colors, name)
       alpha = 255
       if rgb == nil then
         notify("No colour \"" .. name .. "\" in the theme; that border keeps the theme's")
@@ -348,12 +353,17 @@ end
 
 -- Shadows -------------------------------------------------------------------------
 
--- Hyprland has one shadow switch and look for every window. When tiled or
--- floating windows want one: on, in the chosen look, with a rule taking it off
--- every window and others giving it back to those kinds. (The Sidebar and
--- Dock plugins give theirs their own way, for now.)
+-- Hyprland has one shadow switch and look for every window. When any kind wants
+-- one: on, in the chosen look, with a rule taking it off every window and
+-- others giving it back to tiled or floating ones; sidebars and pinned windows
+-- get theirs back from their plugins. Otherwise off, also when another plugin
+-- had turned it on before this loaded.
 local shadow_tiled, shadow_floating = value("tiled", "shadow") == true, value("floating", "shadow") == true
-if shadow_tiled or shadow_floating then
+local any_shadow = shadow_tiled or shadow_floating or value("sidebars", "shadow") == true
+  or value("pinned", "shadow") == true
+if not any_shadow then
+  hl.config({ decoration = { shadow = { enabled = false } } })
+else
   local alpha = string.format("%02x", math.floor(math.max(0, math.min(1, config.shadow_opacity)) * 255 + 0.5))
   local look
   if config.shadow_look == "glow" then
@@ -374,9 +384,41 @@ if shadow_tiled or shadow_floating then
   end
 end
 
--- For the settings panel (later) and tests: `hyprctl eval 'window_style.value("floating", "rounding")'`.
+-- How a sidebar or pinned window looks, for the plugins that style them:
+-- { border_size, active, inactive (colours, "rgba(...)"), rounding, shadow },
+-- each nil to leave it to Hyprland. `colors` is another theme's colors.toml
+-- (as text) to take the colour from, for a sidebar given a theme of its own.
+local function look(kind, colors)
+  if config[kind] == nil then
+    return nil
+  end
+  local active, inactive = border_colours(kind, colors)
+  local width = border_width(kind)
+  local rounding = value(kind, "rounding")
+  return {
+    border_size = width and math.floor(width) or nil,
+    active = active,
+    inactive = inactive,
+    rounding = rounding and math.floor(rounding) or nil,
+    shadow = value(kind, "shadow") == true,
+  }
+end
+
+-- For the plugins, the settings panel (later) and tests.
 window_style = {
+  look = look,
   value = value,
   border_colours = border_colours,
   config = config,
 }
+
+-- Sidebars and pinned windows already styled before this loaded: again, now
+-- with these looks.
+hl.timer(guard("restyling sidebars and pinned windows", function()
+  if type(sidebar) == "table" and sidebar.retheme then
+    sidebar.retheme()
+  end
+  if type(dock) == "table" and dock.restyle then
+    dock.restyle()
+  end
+end), { timeout = 50, type = "oneshot" })
