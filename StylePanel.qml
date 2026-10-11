@@ -141,7 +141,7 @@ Scope {
     if (row.type === "bool") text = v === true ? "On" : "Off"
     else if (row.type === "enum") text = String(v)
     else if (row.type === "colour") { var c = colourOf(v); text = c ? c.label : String(v) }
-    else if (row.type === "theme") text = v === "current" ? "current (" + themeLabel(currentTheme) + ")" : themeLabel(v)
+    else if (row.type === "theme") text = v === "current" ? "Omarchy's (" + themeLabel(currentTheme) + ")" : themeLabel(v)
     else if (typeof v !== "number") text = row.key.indexOf("opacity") === 0 || row.key === "background_opacity" ? "Omarchy's" : "theme's"
     else text = row.unit === "%" ? Math.round(v * 100) + "%" : Math.round(v) + " px"
     if (l.from === "all") text += "  · all"

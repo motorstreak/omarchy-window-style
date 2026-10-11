@@ -40,7 +40,8 @@ Sidebars tab).
   "· all" (or "· Omarchy" where nothing is set). Changing one sets it for that
   kind; `Backspace` hands it back.
 - **Theme**, at the top of each tab: the Omarchy theme that kind takes its
-  colours from, or "current" (the one in use). A sidebar given a theme of its
+  colours from. The first choice, "Omarchy's", follows the theme Omarchy is
+  using (and changes with it); it's what a tab has until you pick another. A sidebar given a theme of its
   own (the Sidebar plugin's `Super + Alt + T`) keeps that one.
 - Border colours come from the tab's theme, with a swatch: first "theme's
   border", the border colours the theme itself sets (in its `hyprland.conf` or
@@ -88,7 +89,7 @@ return {
 ```
 
 Each kind (`all`, `tiled`, `floating`, `sidebars`, `pinned`, `menus`) takes: `theme`
-(a theme's folder name, or "current"), `border`
+(a theme's folder name, or "current": Omarchy's), `border`
 (false: none), `border_size`, `border_colour`, `border_colour_unfocused`,
 `border_opacity`, `border_opacity_unfocused`, `rounding`, `shadow`,
 `opacity`, `opacity_unfocused` (the window, 0.5 to 1; only windows Omarchy
