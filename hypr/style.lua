@@ -170,10 +170,17 @@ local PALETTE = {
   bright_red = "color9", bright_green = "color10", bright_yellow = "color11",
   bright_blue = "color12", bright_magenta = "color13", bright_cyan = "color14",
 }
+-- And the other way round, for themes that only name them ("color2" is
+-- "green").
+local SLOT_NAME = {}
+for name, slot in pairs(PALETTE) do
+  SLOT_NAME[slot] = name
+end
 local function colour_in(colors, name)
   local pattern = '%s*=%s*"#?(%x%x%x%x%x%x)"'
   return colors:match("\n%s*" .. name .. pattern)
     or (PALETTE[name] and colors:match("\n%s*" .. PALETTE[name] .. pattern))
+    or (SLOT_NAME[name] and colors:match("\n%s*" .. SLOT_NAME[name] .. pattern))
 end
 
 -- The theme's own border colours, as "rrggbb" and alpha (0-255), read before
@@ -198,6 +205,7 @@ local omarchy_rounding = tonumber(hl.get_config("decoration:rounding")) or 0
 
 -- A kind's border colours as Hyprland takes them: "rgba(rrggbbaa)", focused and
 -- unfocused; nil for one left as it is.
+local missing = {} -- colour names already reported
 local function border_colours(kind, colors)
   colors = colors or theme_colors
   local function one(name, opacity, theme)
@@ -209,7 +217,10 @@ local function border_colours(kind, colors)
       rgb = colour_in(colors, name)
       alpha = 255
       if rgb == nil then
-        notify("No colour \"" .. name .. "\" in the theme; that border keeps the theme's")
+        if not missing[name] then
+          missing[name] = true
+          notify("No colour \"" .. name .. "\" in the theme; that border keeps the theme's")
+        end
         rgb, alpha = theme[1], theme[2]
       end
     end
