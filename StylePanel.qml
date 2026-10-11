@@ -25,6 +25,8 @@ Scope {
   readonly property var colours: palettes[tab] || []
   property var omarchy: ({})
   property var shadow: ({}) // { look, size, opacity }
+  property var sidebarOptions: null // the Sidebar plugin's { dim, margin }
+  property var sidebarPending: ({}) // changed, to be saved
   property string tab: "all"
   property int index: 0
   property bool confirming: false
@@ -64,7 +66,14 @@ Scope {
     { key: "background_opacity", label: "Background opacity", hint: "Menus, launcher, popups and notifications", type: "number", min: 0.3, max: 1, step: 0.02, unit: "%" },
     { key: "rounding", label: "Rounding", hint: "Always tiled windows': set it there (or on All windows)", type: "number", unit: "px", follows: "tiled" }
   ])
-  readonly property var rows: tab === "all" ? options.concat(shadowRows) : tab === "menus" ? menuRows : options
+  // On Sidebars: the Sidebar plugin's own look options, shown and saved
+  // through it (its settings leave them to this panel).
+  readonly property var sidebarRows: [
+    { key: "dim", label: "Dim behind", hint: "How much the rest of the screen dims while a sidebar shows", type: "number", min: 0, max: 1, step: 0.05, unit: "%", sidebar: true },
+    { key: "margin", label: "Margin", hint: "Gap to the screen edges and the bar", type: "number", min: 0, max: 120, step: 4, unit: "px", sidebar: true }
+  ]
+  readonly property var rows: tab === "all" ? options.concat(shadowRows) : tab === "menus" ? menuRows
+    : tab === "sidebars" && sidebarOptions !== null ? options.concat(sidebarRows) : options
   readonly property int count: rows.length + 1 // and the reset row
   // Whether the reset row has anything to do: an option set on this tab (on
   // All windows: on any tab, or the shadow look changed).
@@ -92,6 +101,7 @@ Scope {
     currentTheme = String(p.current_theme || "")
     omarchy = p.omarchy || {}
     shadow = p.shadow || {}
+    sidebarOptions = p.sidebar && typeof p.sidebar === "object" ? p.sidebar : null
     tab = tabs.some(function(t) { return t.kind === p.tab }) ? p.tab : "all"
     index = Math.max(0, Math.min(Number(p.index) || 0, lastIndex))
     confirming = false
@@ -114,6 +124,7 @@ Scope {
 
   // A row's value on this tab, and where it comes from: "own", "all" or "omarchy".
   function lookup(row) {
+    if (row.sidebar) return { value: sidebarOptions[row.key], from: "own" }
     if (row.global) {
       var g = { shadow_look: shadow.look, shadow_size: shadow.size, shadow_opacity: shadow.opacity }[row.key]
       return { value: g, from: "own" }
@@ -196,6 +207,18 @@ Scope {
     if (key === "theme") refresh.restart()
   }
 
+  // Saving reloads Hyprland, so only once the arrows rest.
+  Timer {
+    id: sidebarSave
+    interval: 600
+    onTriggered: {
+      var args = []
+      for (var k in root.sidebarPending) args.push("'" + k + "'", String(root.sidebarPending[k]))
+      root.sidebarPending = {}
+      if (args.length) Quickshell.execDetached(["hyprctl", "eval", "sidebar.save(" + args.join(", ") + ")"])
+    }
+  }
+
   Timer {
     id: refresh
     interval: 250
@@ -225,12 +248,23 @@ Scope {
       else v = Math.min(row.max, Math.max(row.min, Math.round((v + step * row.step) / row.step) * row.step))
       v = Math.round(v * 1000) / 1000
     }
+    if (row.sidebar) {
+      var o = Object.assign({}, sidebarOptions)
+      o[row.key] = v
+      sidebarOptions = o
+      var pend = Object.assign({}, sidebarPending)
+      pend[row.key] = v
+      sidebarPending = pend
+      Quickshell.execDetached(["hyprctl", "eval", "sidebar.set_live('" + row.key + "', " + v + ")"])
+      sidebarSave.restart()
+      return
+    }
     store(row.key, v, row.global)
   }
 
   // Back to all windows' value (or Omarchy's, on All windows).
   function clear(row) {
-    if (row.global || row.follows || lookup(row).from !== "own") return
+    if (row.global || row.follows || row.sidebar || lookup(row).from !== "own") return
     store(row.key, null, false)
   }
 

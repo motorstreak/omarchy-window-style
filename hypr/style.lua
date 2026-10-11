@@ -844,11 +844,14 @@ local function open(tab, index)
   local m = hl.get_active_monitor()
   local payload = string.format(
     '{"monitor":%s,"tab":%s,"index":%d,"kinds":{%s},"present":{%s},"palettes":{%s},"unfocused":{%s},'
-      .. '"themes":[%s],"current_theme":%s,'
+      .. '"themes":[%s],"current_theme":%s,"sidebar":%s,'
       .. '"omarchy":{"border_size":%d,"rounding":%d},"shadow":{"look":%s,"size":%s,"opacity":%s}}',
     json_string(m and m.name or ""), json_string(tab or "all"), tonumber(index) or 0, table.concat(kinds, ","),
     table.concat(present, ","), table.concat(palettes, ","), table.concat(unfocused, ","),
     table.concat(themes, ","), json_string(current_name),
+    -- The Sidebar plugin's own look options (dim behind, margin), on the
+    -- Sidebars tab.
+    (type(sidebar) == "table" and sidebar.style_options) and sidebar.style_options() or "null",
     omarchy_border_size, omarchy_rounding,
     json(config.shadow_look), json(config.shadow_size), json(config.shadow_opacity))
   hl.exec_cmd("omarchy-shell -q window-style-panel open " .. quote(payload))

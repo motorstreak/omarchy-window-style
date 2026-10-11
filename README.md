@@ -48,6 +48,11 @@ Sidebars tab).
   its `colors.toml`, focused and unfocused), then its accent, its text colour,
   and the palette's six colours, plain and bright. A palette colour follows the slot into other themes ("palette 2" is
   green in most), also in themes that only name their colours.
+- The Sidebars tab also has **Dim behind** (how much the rest of the screen
+  dims while a sidebar shows) and **Margin** (its gap to the screen edges and
+  the bar). They're the Sidebar plugin's own options, which its settings
+  (`Super + Alt + S`) then leave to this panel: shown at once and saved into
+  `~/.config/omarchy/sidebar.lua`; the tab's reset leaves them.
 - The bottom row resets the tab (on All windows: everything, back to Omarchy's
   look): `Enter` (or a click) twice; the arrows never reset. It's greyed out,
   and skipped, when the tab has nothing set.
