@@ -17,8 +17,11 @@ Scope {
   property string monitor: ""
   property var kinds: ({}) // kind -> option -> value or null
   property var present: ({})
-  property var colours: [] // [{ name, label, hex }]
-  property string themeUnfocused: ""
+  property var palettes: ({}) // kind -> [{ name, label, hex }], from its theme
+  property var unfocusedHex: ({}) // kind -> its theme's own unfocused border colour
+  property var themes: [] // [{ slug, label }]
+  property string currentTheme: ""
+  readonly property var colours: palettes[tab] || []
   property var omarchy: ({})
   property var shadow: ({}) // { look, size, opacity }
   property string tab: "all"
@@ -33,6 +36,7 @@ Scope {
   }
 
   readonly property var options: [
+    { key: "theme", label: "Theme", hint: "The Omarchy theme its colours come from", type: "theme" },
     { key: "border", label: "Border", hint: "Off: no border, whatever the rows below say", type: "bool" },
     { key: "border_colour", label: "Border colour", hint: "Focused, from the theme's colours", type: "colour", needs: "border" },
     { key: "border_colour_unfocused", label: "Unfocused border colour", hint: "From the theme's colours", type: "colour", needs: "border", unfocused: true },
@@ -58,12 +62,14 @@ Scope {
     monitor = String(p.monitor || "")
     kinds = p.kinds || {}
     present = p.present || {}
-    colours = Array.isArray(p.colours) ? p.colours : []
-    themeUnfocused = String(p.theme_unfocused || "")
+    palettes = p.palettes || {}
+    unfocusedHex = p.unfocused || {}
+    themes = Array.isArray(p.themes) ? p.themes : []
+    currentTheme = String(p.current_theme || "")
     omarchy = p.omarchy || {}
     shadow = p.shadow || {}
     tab = tabs.some(function(t) { return t.kind === p.tab }) ? p.tab : "all"
-    index = 0
+    index = Math.max(0, Math.min(Number(p.index) || 0, count - 1))
     confirming = false
     open = true
     keys.forceActiveFocus()
@@ -77,6 +83,7 @@ Scope {
     case "rounding": return omarchy.rounding
     case "shadow": return false
     case "border_colour": case "border_colour_unfocused": return "theme"
+    case "theme": return "current"
     }
     return null
   }
@@ -100,6 +107,13 @@ Scope {
     return !row.needs || lookup({ key: row.needs }).value !== false
   }
 
+  function themeLabel(slug) {
+    for (var i = 0; i < themes.length; i++) {
+      if (themes[i].slug === slug) return themes[i].label
+    }
+    return String(slug)
+  }
+
   function colourOf(name) {
     for (var i = 0; i < colours.length; i++) {
       if (colours[i].name === name) return colours[i]
@@ -109,7 +123,7 @@ Scope {
 
   function swatch(row) {
     var v = lookup(row).value
-    if (row.unfocused && v === "theme") return themeUnfocused
+    if (row.unfocused && v === "theme") return unfocusedHex[tab] || ""
     var c = colourOf(v)
     return c ? c.hex : ""
   }
@@ -119,6 +133,7 @@ Scope {
     if (row.type === "bool") text = v === true ? "On" : "Off"
     else if (row.type === "enum") text = String(v)
     else if (row.type === "colour") { var c = colourOf(v); text = c ? c.label : String(v) }
+    else if (row.type === "theme") text = v === "current" ? "current (" + themeLabel(currentTheme) + ")" : themeLabel(v)
     else if (typeof v !== "number") text = row.key.indexOf("opacity") === 0 ? "Omarchy's" : "theme's"
     else text = row.unit === "%" ? Math.round(v * 100) + "%" : Math.round(v) + " px"
     if (l.from === "all") text += "  · all"
@@ -128,7 +143,7 @@ Scope {
 
   function luaValue(v) {
     if (v === null || v === undefined) return "nil"
-    if (typeof v === "string") return "'" + v.replace(/[^A-Za-z0-9_]/g, "") + "'"
+    if (typeof v === "string") return "'" + v.replace(/[^A-Za-z0-9_.-]/g, "") + "'"
     return String(v)
   }
 
@@ -150,6 +165,14 @@ Scope {
       kinds = k
     }
     send(key, v, global)
+    // Another theme: its colours to pick from (the panel opens again with them).
+    if (key === "theme") refresh.restart()
+  }
+
+  Timer {
+    id: refresh
+    interval: 250
+    onTriggered: Quickshell.execDetached(["hyprctl", "eval", "window_style.open('" + root.tab + "', " + root.index + ")"])
   }
 
   function change(row, step) {
@@ -160,6 +183,10 @@ Scope {
     } else if (row.type === "enum") {
       var i = row.options.indexOf(String(v))
       v = row.options[((i < 0 ? 0 : i + step) + row.options.length) % row.options.length]
+    } else if (row.type === "theme") {
+      var list = ["current"].concat(themes.map(function(t) { return t.slug }))
+      var n = list.indexOf(String(v))
+      v = list[((n < 0 ? 0 : n + step) + list.length) % list.length]
     } else if (row.type === "colour") {
       var at = -1
       for (var j = 0; j < colours.length; j++) {

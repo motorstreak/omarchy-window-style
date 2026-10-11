@@ -61,6 +61,9 @@ end
 -- left out there, it stays Omarchy's (its theme's colours, its 2 px border,
 -- square corners, its slight see-through).
 local OPTIONS = {
+  -- An Omarchy theme (its folder name) to take this kind's colours from, or
+  -- "current" for the one in use.
+  theme = "string",
   border = "boolean", -- false: no border
   border_size = "number", -- in pixels
   -- A colour from the theme's colors.toml: "accent", "foreground", a palette
@@ -203,11 +206,60 @@ local theme_inactive = { theme_border("general:col.inactive_border") }
 local omarchy_border_size = tonumber(hl.get_config("general:border_size")) or 2
 local omarchy_rounding = tonumber(hl.get_config("decoration:rounding")) or 0
 
+-- Another theme's colors.toml, as text (yours before Omarchy's).
+local omarchy_path = os.getenv("OMARCHY_PATH") or "/usr/share/omarchy"
+local function theme_colors_of(name)
+  for _, root in ipairs({ home .. "/.config/omarchy/themes/", omarchy_path .. "/themes/" }) do
+    local f = io.open(root .. name .. "/colors.toml", "r")
+    if f then
+      local text = "\n" .. f:read("a")
+      f:close()
+      return text
+    end
+  end
+end
+
+-- A theme's own border colours (as Omarchy makes them from its colors.toml):
+-- its hyprland_active_border (the first colour of it), else its accent; and
+-- its hyprland_inactive_border, else Omarchy's grey.
+local function own_border(colors)
+  local function first(key)
+    local spec = colors:match("\n%s*" .. key .. '%s*=%s*"([^"]*)"')
+    local rgb, alpha = spec and spec:match("rgba?%((%x%x%x%x%x%x)(%x?%x?)%)")
+    if rgb then
+      return rgb, alpha ~= "" and tonumber(alpha, 16) or 255
+    end
+  end
+  local a = { first("hyprland_active_border") }
+  if a[1] == nil then
+    a = { colors:match('\n%s*accent%s*=%s*"#?(%x%x%x%x%x%x)"'), 255 }
+  end
+  local i = { first("hyprland_inactive_border") }
+  if i[1] == nil then
+    i = { "595959", 170 }
+  end
+  return a, i
+end
+
+-- The colours a kind takes: its theme's (a sidebar's own theme, from the
+-- Sidebar plugin, comes as `colors`), and that theme's own border colours.
+local function kind_colors(kind, colors)
+  local name = value(kind, "theme")
+  if colors == nil and name and name ~= "current" then
+    colors = theme_colors_of(name)
+  end
+  if colors == nil then
+    return theme_colors, theme_active, theme_inactive
+  end
+  local a, i = own_border(colors)
+  return colors, a, i
+end
+
 -- A kind's border colours as Hyprland takes them: "rgba(rrggbbaa)", focused and
 -- unfocused; nil for one left as it is.
 local missing = {} -- colour names already reported
-local function border_colours(kind, colors)
-  colors = colors or theme_colors
+local function border_colours(kind, given)
+  local colors, own_active, own_inactive = kind_colors(kind, given)
   local function one(name, opacity, theme)
     if name == nil and opacity == nil then
       return nil
@@ -232,8 +284,8 @@ local function border_colours(kind, colors)
     end
     return string.format("rgba(%s%02x)", rgb, alpha)
   end
-  return one(value(kind, "border_colour"), value(kind, "border_opacity"), theme_active),
-    one(value(kind, "border_colour_unfocused"), value(kind, "border_opacity_unfocused"), theme_inactive)
+  return one(value(kind, "border_colour"), value(kind, "border_opacity"), own_active),
+    one(value(kind, "border_colour_unfocused"), value(kind, "border_opacity_unfocused"), own_inactive)
 end
 
 local function border_width(kind)
@@ -427,7 +479,7 @@ end
 -- The file is this plugin's: written whole on every change from the panel
 -- (a comment of yours in it isn't kept).
 local config_file = home .. "/.config/omarchy/window-style.lua"
-local ORDER = { "border", "border_size", "border_colour", "border_opacity", "border_colour_unfocused",
+local ORDER = { "theme", "border", "border_size", "border_colour", "border_opacity", "border_colour_unfocused",
   "border_opacity_unfocused", "rounding", "shadow", "opacity", "opacity_unfocused" }
 local function lua_value(v)
   if type(v) == "string" then
@@ -532,7 +584,7 @@ end
 -- SUPER + CTRL + ALT + S (or the Sidebar plugin's settings): StylePanel.qml with
 -- every kind's options as set (null: from all windows, or Omarchy's), and the
 -- theme's colours to pick from. `tab` opens it on that kind.
-local function open(tab)
+local function open(tab, index)
   local kinds = {}
   for _, kind in ipairs(KINDS) do
     local parts = {}
@@ -541,21 +593,53 @@ local function open(tab)
     end
     kinds[#kinds + 1] = json_string(kind) .. ":{" .. table.concat(parts, ",") .. "}"
   end
-  local colours = {}
-  local function add(name, label, hex)
-    if hex then
-      colours[#colours + 1] = string.format('{"name":%s,"label":%s,"hex":%s}', json_string(name),
-        json_string(label), json_string("#" .. hex))
+  -- Each kind's colours to pick from, from its theme: that theme's own border
+  -- colour, its accent, its text colour and its palette.
+  local palettes, unfocused = {}, {}
+  for _, kind in ipairs(KINDS) do
+    local colors, a, i = kind_colors(kind)
+    local colours = {}
+    local function add(name, label, hex)
+      if hex then
+        colours[#colours + 1] = string.format('{"name":%s,"label":%s,"hex":%s}', json_string(name),
+          json_string(label), json_string("#" .. hex))
+      end
     end
+    add("theme", "theme's own", a[1])
+    add("accent", "accent", colour_in(colors, "accent"))
+    add("foreground", "text colour", colour_in(colors, "foreground"))
+    for n = 1, 6 do
+      add("color" .. n, "palette " .. n, colour_in(colors, "color" .. n))
+    end
+    for n = 9, 14 do
+      add("color" .. n, "bright " .. (n - 8), colour_in(colors, "color" .. n))
+    end
+    palettes[#palettes + 1] = json_string(kind) .. ":[" .. table.concat(colours, ",") .. "]"
+    unfocused[#unfocused + 1] = json_string(kind) .. ":" .. json_string(i[1] and ("#" .. i[1]) or "")
   end
-  add("theme", "theme's own", theme_active[1])
-  add("accent", "accent", colour_in(theme_colors, "accent"))
-  add("foreground", "text colour", colour_in(theme_colors, "foreground"))
-  for i = 1, 6 do
-    add("color" .. i, "palette " .. i, colour_in(theme_colors, "color" .. i))
+  -- The installed themes, by folder name.
+  local themes, seen = {}, {}
+  local p = io.popen("ls -1 " .. quote(home .. "/.config/omarchy/themes") .. " " .. quote(omarchy_path .. "/themes")
+    .. " 2>/dev/null")
+  if p then
+    for name in p:lines() do
+      if name:match("^[%w._-]+$") and not seen[name] and theme_colors_of(name) then
+        seen[name] = true
+        themes[#themes + 1] = name
+      end
+    end
+    p:close()
   end
-  for i = 9, 14 do
-    add("color" .. i, "bright " .. (i - 8), colour_in(theme_colors, "color" .. i))
+  table.sort(themes)
+  for n, name in ipairs(themes) do
+    local label = name:gsub("[-_]", " "):gsub("(%a)(%w*)", function(x, y) return x:upper() .. y end)
+    themes[n] = string.format('{"slug":%s,"label":%s}', json_string(name), json_string(label))
+  end
+  local current_name = ""
+  local cf = io.open(state_home .. "/omarchy/current/theme.name", "r")
+  if cf then
+    current_name = (cf:read("l") or "")
+    cf:close()
   end
   local present = {
     '"sidebars":' .. tostring(type(sidebar) == "table"),
@@ -563,11 +647,12 @@ local function open(tab)
   }
   local m = hl.get_active_monitor()
   local payload = string.format(
-    '{"monitor":%s,"tab":%s,"kinds":{%s},"present":{%s},"colours":[%s],"theme_unfocused":%s,'
+    '{"monitor":%s,"tab":%s,"index":%d,"kinds":{%s},"present":{%s},"palettes":{%s},"unfocused":{%s},'
+      .. '"themes":[%s],"current_theme":%s,'
       .. '"omarchy":{"border_size":%d,"rounding":%d},"shadow":{"look":%s,"size":%s,"opacity":%s}}',
-    json_string(m and m.name or ""), json_string(tab or "all"), table.concat(kinds, ","),
-    table.concat(present, ","), table.concat(colours, ","),
-    json_string(theme_inactive[1] and ("#" .. theme_inactive[1]) or ""),
+    json_string(m and m.name or ""), json_string(tab or "all"), tonumber(index) or 0, table.concat(kinds, ","),
+    table.concat(present, ","), table.concat(palettes, ","), table.concat(unfocused, ","),
+    table.concat(themes, ","), json_string(current_name),
     omarchy_border_size, omarchy_rounding,
     json(config.shadow_look), json(config.shadow_size), json(config.shadow_opacity))
   hl.exec_cmd("omarchy-shell -q window-style-panel open " .. quote(payload))

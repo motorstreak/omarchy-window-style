@@ -38,7 +38,10 @@ Sidebars tab).
 - On a kind's tab, values it takes from All windows are dimmed and marked
   "· all" (or "· Omarchy" where nothing is set). Changing one sets it for that
   kind; `Backspace` hands it back.
-- Border colours come from the current theme, with a swatch: its own border
+- **Theme**, at the top of each tab: the Omarchy theme that kind takes its
+  colours from, or "current" (the one in use). A sidebar given a theme of its
+  own (the Sidebar plugin's `Super + Alt + T`) keeps that one.
+- Border colours come from the tab's theme, with a swatch: its own border
   colour, its accent, its text colour, and the palette's six colours, plain and
   bright. A palette colour follows the slot into other themes ("palette 2" is
   green in most), also in themes that only name their colours.
@@ -74,7 +77,8 @@ return {
 }
 ```
 
-Each kind (`all`, `tiled`, `floating`, `sidebars`, `pinned`) takes: `border`
+Each kind (`all`, `tiled`, `floating`, `sidebars`, `pinned`) takes: `theme`
+(a theme's folder name, or "current"), `border`
 (false: none), `border_size`, `border_colour`, `border_colour_unfocused`,
 `border_opacity`, `border_opacity_unfocused`, `rounding`, `shadow`,
 `opacity`, `opacity_unfocused` (the window, 0.5 to 1; only windows Omarchy
