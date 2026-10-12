@@ -57,7 +57,8 @@ Scope {
   readonly property var shadowRows: [
     { key: "shadow_look", label: "Shadow look", hint: "One for every window: a glow in the accent colour, or a dark shadow", type: "enum", options: ["glow", "shadow"], global: true },
     { key: "shadow_size", label: "Shadow size", hint: "How far it reaches", type: "number", min: 1, max: 60, step: 1, unit: "px", global: true },
-    { key: "shadow_opacity", label: "Shadow strength", hint: "0 is clear, 100 solid", type: "number", min: 0, max: 1, step: 0.05, unit: "%", global: true }
+    { key: "shadow_opacity", label: "Shadow strength", hint: "0 is clear, 100 solid", type: "number", min: 0, max: 1, step: 0.05, unit: "%", global: true },
+    { key: "shadow_unfocused", label: "Shadow on unfocused windows", hint: "Off: only the focused window has one", type: "bool", global: true }
   ]
   // Menus (Omarchy's shell draws them): the border, and how solid their
   // background is. Their rounding is shown, not set: the shell has one
@@ -86,7 +87,7 @@ Scope {
     }
     if (tab !== "all") return set(tab)
     for (var kind in kinds) if (set(kind)) return true
-    return shadow.look !== undefined && (shadow.look !== "glow" || shadow.size !== 6 || shadow.opacity !== 0.2)
+    return shadow.look !== undefined && (shadow.look !== "glow" || shadow.size !== 6 || shadow.opacity !== 0.2 || shadow.unfocused === false)
   }
   // The last row ↓ reaches: the reset row only when it can do something.
   readonly property int lastIndex: resettable ? rows.length : rows.length - 1
@@ -127,7 +128,7 @@ Scope {
   function lookup(row) {
     if (row.sidebar) return { value: sidebarOptions[row.key], from: "own" }
     if (row.global) {
-      var g = { shadow_look: shadow.look, shadow_size: shadow.size, shadow_opacity: shadow.opacity }[row.key]
+      var g = { shadow_look: shadow.look, shadow_size: shadow.size, shadow_opacity: shadow.opacity, shadow_unfocused: shadow.unfocused }[row.key]
       return { value: g, from: "own" }
     }
     // A row another kind's value shows (a menus' rounding: tiled windows').
@@ -195,7 +196,7 @@ Scope {
   function store(key, v, global) {
     if (global) {
       var s = Object.assign({}, shadow)
-      s[{ shadow_look: "look", shadow_size: "size", shadow_opacity: "opacity" }[key]] = v
+      s[{ shadow_look: "look", shadow_size: "size", shadow_opacity: "opacity", shadow_unfocused: "unfocused" }[key]] = v
       shadow = s
     } else {
       var k = Object.assign({}, kinds)
@@ -273,7 +274,7 @@ Scope {
     var k = Object.assign({}, kinds)
     if (tab === "all") {
       for (var name in k) k[name] = {}
-      shadow = { look: "glow", size: 6, opacity: 0.2 }
+      shadow = { look: "glow", size: 6, opacity: 0.2, unfocused: true }
     } else {
       k[tab] = {}
     }

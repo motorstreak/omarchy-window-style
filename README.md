@@ -67,7 +67,8 @@ has one rounding for everything it draws, tiled windows'.
 
 Shadows have one look for every window, as Hyprland allows only one: set it on
 All windows (a **glow** in the accent colour, or a faint dark **shadow**, its
-size and strength); each kind only turns it on or off.
+size and strength, and whether unfocused windows have one too or only the
+focused window); each kind only turns it on or off.
 
 ## The file
 
@@ -92,6 +93,7 @@ return {
   shadow_look = "glow",                -- or "shadow"
   shadow_size = 6,
   shadow_opacity = 0.2,
+  shadow_unfocused = false,            -- only the focused window has a shadow
 }
 ```
 

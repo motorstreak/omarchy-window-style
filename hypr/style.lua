@@ -94,6 +94,7 @@ local defaults = {
   shadow_look = "glow",
   shadow_size = 6, -- its reach in pixels
   shadow_opacity = 0.2, -- 0 (clear) to 1 (solid)
+  shadow_unfocused = true, -- false: only the focused window has one
 }
 
 local config = { all = {}, tiled = {}, floating = {}, sidebars = {}, pinned = {}, menus = {} }
@@ -483,10 +484,12 @@ local function apply()
     if config.shadow_look == "glow" then
       local rgb = colour_in(theme_colors, "accent") or theme_active[1] or "000000"
       look = { enabled = true, range = math.floor(config.shadow_size), render_power = 3, offset = { 0, 0 },
-        color = "rgba(" .. rgb .. alpha .. ")", color_inactive = "rgba(" .. rgb .. "00)" }
+        color = "rgba(" .. rgb .. alpha .. ")",
+        color_inactive = "rgba(" .. rgb .. (config.shadow_unfocused and alpha or "00") .. ")" }
     else
       look = { enabled = true, range = math.floor(config.shadow_size), render_power = 2, offset = { 0, 0 },
-        color = "rgba(000000" .. alpha .. ")", color_inactive = "rgba(000000" .. alpha .. ")" }
+        color = "rgba(000000" .. alpha .. ")",
+        color_inactive = "rgba(000000" .. (config.shadow_unfocused and alpha or "00") .. ")" }
     end
     hl.config({ decoration = { shadow = look } })
   else
@@ -698,7 +701,7 @@ local function save()
       lines[#lines + 1] = "  },"
     end
   end
-  for _, k in ipairs({ "shadow_look", "shadow_size", "shadow_opacity" }) do
+  for _, k in ipairs({ "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused" }) do
     if config[k] ~= defaults[k] then
       lines[#lines + 1] = "  " .. k .. " = " .. lua_value(config[k]) .. ","
     end
@@ -720,7 +723,8 @@ local function set(kind, option, v)
       return
     end
     config[kind][option] = v
-  elseif option == nil and (kind == "shadow_look" or kind == "shadow_size" or kind == "shadow_opacity") then
+  elseif option == nil and (kind == "shadow_look" or kind == "shadow_size" or kind == "shadow_opacity"
+      or kind == "shadow_unfocused") then
     if type(v) ~= type(defaults[kind]) then
       return
     end
@@ -738,7 +742,7 @@ local function reset(kind)
     for _, k in ipairs(KINDS) do
       config[k] = {}
     end
-    for _, k in ipairs({ "shadow_look", "shadow_size", "shadow_opacity" }) do
+    for _, k in ipairs({ "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused" }) do
       config[k] = defaults[k]
     end
   elseif config[kind] ~= nil then
@@ -836,7 +840,7 @@ local function open(tab, index)
   local payload = string.format(
     '{"monitor":%s,"tab":%s,"index":%d,"kinds":{%s},"present":{%s},"palettes":{%s},"unfocused":{%s},'
       .. '"themes":[%s],"current_theme":%s,"sidebar":%s,'
-      .. '"omarchy":{"border_size":%d,"rounding":%d},"shadow":{"look":%s,"size":%s,"opacity":%s}}',
+      .. '"omarchy":{"border_size":%d,"rounding":%d},"shadow":{"look":%s,"size":%s,"opacity":%s,"unfocused":%s}}',
     json_string(m and m.name or ""), json_string(tab or "all"), tonumber(index) or 0, table.concat(kinds, ","),
     table.concat(present, ","), table.concat(palettes, ","), table.concat(unfocused, ","),
     table.concat(themes, ","), json_string(current_name),
@@ -844,7 +848,8 @@ local function open(tab, index)
     -- Sidebars tab.
     (type(sidebar) == "table" and sidebar.style_options) and sidebar.style_options() or "null",
     omarchy_border_size, omarchy_rounding,
-    json(config.shadow_look), json(config.shadow_size), json(config.shadow_opacity))
+    json(config.shadow_look), json(config.shadow_size), json(config.shadow_opacity),
+    json(config.shadow_unfocused))
   hl.exec_cmd("omarchy-shell -q window-style-panel open " .. quote(payload))
 end
 
