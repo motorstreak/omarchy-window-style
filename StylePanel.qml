@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 // The window style panel (SUPER + CTRL + ALT + S): a tab for all windows and
@@ -334,7 +335,7 @@ Scope {
 
     Rectangle {
       anchors.fill: parent
-      color: Color.menu.scrim
+      color: Commons.Color.menu.scrim
     }
 
     MouseArea {
@@ -351,8 +352,8 @@ Scope {
       radius: Style.cornerRadius
       // As Omarchy's menus: their background, border and its width from
       // shell.toml's [menu] (the Window Style plugin's Menus tab).
-      color: Color.menu.background
-      borderSpec: Border.surfaceSpec("menu", "border", Color.menu.border, Math.max(1, Style.space(2)))
+      color: Commons.Color.menu.background
+      borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
       clip: true
 
       MouseArea { anchors.fill: parent; onClicked: {} }
@@ -404,7 +405,7 @@ Scope {
           verticalAlignment: Text.AlignVCenter
           textFormat: Text.PlainText
           text: "Window style"
-          color: Color.menu.text
+          color: Commons.Color.menu.text
           opacity: 0.58
           font.family: Style.font.menuFamily
           font.pixelSize: Style.font.heading
@@ -425,8 +426,8 @@ Scope {
               width: label.implicitWidth + Style.space(24)
               height: label.implicitHeight + Style.space(12)
               radius: height / 2
-              color: current ? Color.menu.selectedBackground : "transparent"
-              border.color: Util.alpha(Color.menu.text, current ? 0 : 0.15)
+              color: current ? Commons.Color.menu.selectedBackground : "transparent"
+              border.color: Util.alpha(Commons.Color.menu.text, current ? 0 : 0.15)
               border.width: 1
 
               Text {
@@ -434,7 +435,7 @@ Scope {
                 anchors.centerIn: parent
                 textFormat: Text.PlainText
                 text: modelData.label
-                color: parent.current ? Color.menu.selectedText : Color.menu.text
+                color: parent.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
                 font.family: Style.font.menuFamily
                 font.pixelSize: Style.font.bodySmall
                 font.weight: parent.current ? Font.Medium : Font.Normal
@@ -465,7 +466,7 @@ Scope {
             width: column.width
             height: panel.rowHeight
             radius: Style.cornerRadius
-            color: current ? Color.menu.selectedBackground : "transparent"
+            color: current ? Commons.Color.menu.selectedBackground : "transparent"
             opacity: root.enabled(modelData) ? 1 : 0.4
 
             Column {
@@ -480,7 +481,7 @@ Scope {
                 width: parent.width
                 textFormat: Text.PlainText
                 text: row.modelData.label
-                color: row.current ? Color.menu.selectedText : Color.menu.text
+                color: row.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
                 font.family: Style.font.menuFamily
                 font.pixelSize: Style.font.body
                 font.weight: Font.Medium
@@ -491,7 +492,7 @@ Scope {
                 width: parent.width
                 textFormat: Text.PlainText
                 text: row.modelData.hint
-                color: row.current ? Color.menu.selectedText : Color.menu.text
+                color: row.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
                 opacity: 0.52
                 font.family: Style.font.menuFamily
                 font.pixelSize: Style.font.bodySmall
@@ -509,7 +510,7 @@ Scope {
               height: width
               radius: width / 4
               color: hex || "transparent"
-              border.color: Util.alpha(Color.menu.text, 0.3)
+              border.color: Util.alpha(Commons.Color.menu.text, 0.3)
               border.width: 1
             }
 
@@ -520,7 +521,7 @@ Scope {
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: { root.kinds; root.shadow; root.tab; var arrows = row.modelData.type !== "bool" && !row.modelData.follows; return (arrows ? "‹  " : "") + root.shown(row.modelData) + (arrows ? "  ›" : "") }
-              color: row.current ? Color.menu.selectedText : Color.menu.text
+              color: row.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
               // Inherited: dimmed.
               opacity: row.source.from === "own" ? 1 : 0.5
               font.family: Style.font.menuFamily
@@ -543,7 +544,7 @@ Scope {
           width: column.width
           height: Math.max(Style.space(40), Style.font.body + Style.spacing.rowPaddingX * 2)
           radius: Style.cornerRadius
-          color: current ? Color.menu.selectedBackground : "transparent"
+          color: current ? Commons.Color.menu.selectedBackground : "transparent"
           // Nothing set here: nothing to reset.
           opacity: root.resettable ? 1 : 0.35
 
@@ -555,7 +556,7 @@ Scope {
             text: !root.resettable ? (root.tab === "all" ? "Nothing to reset: Omarchy's look" : "Nothing to reset: all windows' look")
                 : root.confirming ? "Press again to reset " + (root.tab === "all" ? "every tab" : "this tab")
                                   : (root.tab === "all" ? "Reset everything to Omarchy's look" : "Reset this tab to all windows'")
-            color: parent.current ? Color.menu.selectedText : Color.menu.text
+            color: parent.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
             font.family: Style.font.menuFamily
             font.pixelSize: Style.font.body
             font.weight: Font.Medium
@@ -576,7 +577,7 @@ Scope {
           topPadding: Style.space(8)
           textFormat: Text.PlainText
           text: "Tab next tab · ↑↓ choose · ←→ change · ⌫ back to " + (root.tab === "all" ? "Omarchy's" : "all windows'") + " · Enter on reset · Esc close"
-          color: Color.menu.text
+          color: Commons.Color.menu.text
           opacity: 0.45
           font.family: Style.font.menuFamily
           font.pixelSize: Style.font.bodySmall
