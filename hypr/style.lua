@@ -469,10 +469,11 @@ local function apply()
   end
 
   -- Shadows. Hyprland has one switch and look for every window. When any kind
-  -- wants one: on, in the chosen look, with a rule taking it off every window
-  -- and others giving it back to tiled or floating ones; sidebars and pinned
-  -- windows get theirs back from their plugins. Otherwise off (also when
-  -- another plugin had turned it on).
+  -- wants one: on, in the chosen look, with a rule taking it off tiled or
+  -- floating windows if they don't want it; sidebars and pinned windows get
+  -- theirs from their plugins. Otherwise off (also when another plugin had
+  -- turned it on). The two rules always exist, and only their value changes:
+  -- open windows take a replaced rule at once, but not a new one.
   local shadow_tiled, shadow_floating = value("tiled", "shadow") == true, value("floating", "shadow") == true
   local any = shadow_tiled or shadow_floating or value("sidebars", "shadow") == true
     or value("pinned", "shadow") == true
@@ -488,21 +489,11 @@ local function apply()
         color = "rgba(000000" .. alpha .. ")", color_inactive = "rgba(000000" .. alpha .. ")" }
     end
     hl.config({ decoration = { shadow = look } })
-    rule("window-style-no-shadow", { match = { class = ".*" }, no_shadow = true })
   else
     hl.config({ decoration = { shadow = { enabled = false } } })
-    no_rule("window-style-no-shadow")
   end
-  if any and shadow_tiled then
-    rule("window-style-tiled-shadow", { match = { float = false }, no_shadow = false })
-  else
-    no_rule("window-style-tiled-shadow")
-  end
-  if any and shadow_floating then
-    rule("window-style-floating-shadow", { match = { float = true }, no_shadow = false })
-  else
-    no_rule("window-style-floating-shadow")
-  end
+  rule("window-style-tiled-no-shadow", { match = { float = false }, no_shadow = not shadow_tiled })
+  rule("window-style-floating-no-shadow", { match = { float = true }, no_shadow = not shadow_floating })
 
   guard("styling the menus", write_menus)()
 
