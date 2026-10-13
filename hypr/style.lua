@@ -361,12 +361,16 @@ end
 -- each floating window, the shadow switch, and sidebars and pinned windows
 -- through their plugins.
 
+-- A named rule made again replaces the one before, but keeps any match field
+-- the new one doesn't give: so a rule is turned off with its own match (one
+-- turned off by matching nothing could never match again), and on explicitly.
 local function rule(name, spec)
   spec.name = name
+  spec.enabled = true
   hl.window_rule(spec)
 end
-local function no_rule(name)
-  hl.window_rule({ name = name, enabled = false, match = { class = "^$" } })
+local function no_rule(name, match)
+  hl.window_rule({ name = name, enabled = false, match = match })
 end
 
 -- Omarchy makes windows slightly see-through with a rule on the windows tagged
@@ -450,7 +454,7 @@ local function apply()
   if o_tiled then
     rule("window-style-tiled-opacity", { match = { tag = "default-opacity", float = false }, opacity = o_tiled })
   else
-    no_rule("window-style-tiled-opacity")
+    no_rule("window-style-tiled-opacity", { tag = "default-opacity", float = false })
   end
 
   -- Floating: a rule for what differs from tiled.
@@ -472,13 +476,13 @@ local function apply()
     spec.match = { float = true }
     rule("window-style-floating", spec)
   else
-    no_rule("window-style-floating")
+    no_rule("window-style-floating", { float = true })
   end
   local o_floating = opacity_of("floating")
   if o_floating and (differs("opacity") or differs("opacity_unfocused")) then
     rule("window-style-floating-opacity", { match = { tag = "default-opacity", float = true }, opacity = o_floating })
   else
-    no_rule("window-style-floating-opacity")
+    no_rule("window-style-floating-opacity", { tag = "default-opacity", float = true })
   end
 
   -- Popped out: rules on Omarchy's "pop" tag for what differs from floating
@@ -504,13 +508,13 @@ local function apply()
     pspec.match = { tag = "pop" }
     rule("window-style-popped", pspec)
   else
-    no_rule("window-style-popped")
+    no_rule("window-style-popped", { tag = "pop" })
   end
   local o_popped = opacity_of("popped")
   if o_popped and (differs_popped("opacity") or differs_popped("opacity_unfocused")) then
     rule("window-style-popped-opacity", { match = { tag = "pop" }, opacity = o_popped })
   else
-    no_rule("window-style-popped-opacity")
+    no_rule("window-style-popped-opacity", { tag = "pop" })
   end
   -- A rule made new doesn't reach windows already open (a replaced one does):
   -- the windows popped out now take the tag again, which checks their rules.
