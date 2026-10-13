@@ -9,9 +9,10 @@ window only where it should differ:
 |---|---|
 | All windows | Every window: what the others start from |
 | Tiled | Ordinary tiled windows |
-| Floating | Floating windows, popped-out ones (Super + O) included |
+| Floating | Floating windows |
+| Popped out | Windows popped out with Omarchy's `Super + O` (floating, on every workspace): as Floating unless set here |
 | Sidebars | Windows of the [Sidebar plugin](https://github.com/motorstreak/omarchy-sidebar), when it's installed |
-| Pinned | Windows the [Dock plugin](https://github.com/motorstreak/omarchy-dock) pins, when it's installed |
+| Docked | Windows the [Dock plugin](https://github.com/motorstreak/omarchy-dock) docks, when it's installed (`pinned` in the config) |
 | Menus | Omarchy's menus, launcher, popups and notifications |
 
 Without this plugin, the Sidebar and Dock plugins keep their own looks.
@@ -33,11 +34,12 @@ file, also run `omarchy restart shell`. Remove it with
 Sidebars tab).
 
 - `Tab` / `Shift + Tab` (or a click) switch tabs: All windows, Tiled, Floating,
-  Sidebars, Pinned, Menus.
+  Popped out, Sidebars, Docked, Menus.
 - `↑` / `↓` choose a row; `←` / `→` (or a click) change it. A change shows at
   once and is saved.
 - On a kind's tab, values it takes from All windows are dimmed and marked
-  "· all" (or "· Omarchy" where nothing is set). Changing one sets it for that
+  "· all" (or "· Omarchy" where nothing is set); on Popped out, values it takes
+  from Floating are marked "· floating". Changing one sets it for that
   kind; `Backspace` hands it back.
 - **Theme**, at the top of each tab: the Omarchy theme that kind takes its
   colours from. The first choice, "Omarchy's", follows the theme Omarchy is
@@ -97,7 +99,7 @@ return {
 }
 ```
 
-Each kind (`all`, `tiled`, `floating`, `sidebars`, `pinned`, `menus`) takes: `theme`
+Each kind (`all`, `tiled`, `floating`, `popped`, `sidebars`, `pinned`, `menus`) takes: `theme`
 (a theme's folder name, or "current": Omarchy's), `border`
 (false: none), `border_size`, `border_colour`, `border_colour_unfocused`,
 `border_opacity`, `border_opacity_unfocused`, `rounding`, `shadow`,
@@ -112,7 +114,8 @@ Its service loads `hypr/style.lua` into the running Hyprland with `hyprctl
 eval`, at start and after every config reload (the same loader as the Sidebar
 plugin's). Tiled windows get Hyprland's own settings; floating ones a window
 rule for what differs, and their rounding set on each as it floats (rules can't
-round past 20); sidebars and pinned windows are styled by their plugins, which
+round past 20); popped-out ones rules on Omarchy's `pop` tag, made after the
+floating ones; sidebars and docked windows are styled by their plugins, which
 ask `window_style.look(kind)`. It alone switches Hyprland's shadows on or off.
 
 ## Requirements

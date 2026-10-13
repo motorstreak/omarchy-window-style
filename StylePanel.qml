@@ -29,13 +29,17 @@ Scope {
   property var sidebarOptions: null // the Sidebar plugin's { dim, margin }
   property var sidebarPending: ({}) // changed, to be saved
   property string tab: "all"
+  // Whose look a tab's unset rows take: popped-out windows take floating ones'.
+  readonly property string parentLook: tab === "popped" ? "floating windows'" : "all windows'"
   property int index: 0
   property bool confirming: false
 
   readonly property var tabs: {
-    var list = [{ kind: "all", label: "All windows" }, { kind: "tiled", label: "Tiled" }, { kind: "floating", label: "Floating" }]
+    var list = [{ kind: "all", label: "All windows" }, { kind: "tiled", label: "Tiled" }, { kind: "floating", label: "Floating" },
+      { kind: "popped", label: "Popped out" }]
     if (present.sidebars) list.push({ kind: "sidebars", label: "Sidebars" })
-    if (present.pinned) list.push({ kind: "pinned", label: "Pinned" })
+    // The Dock plugin's windows (the kind is "pinned"; Omarchy's pop-outs are pinned too).
+    if (present.pinned) list.push({ kind: "pinned", label: "Docked" })
     list.push({ kind: "menus", label: "Menus" })
     return list
   }
@@ -124,7 +128,8 @@ Scope {
     return null
   }
 
-  // A row's value on this tab, and where it comes from: "own", "all" or "omarchy".
+  // A row's value on this tab, and where it comes from: "own", "floating" (a
+  // popped-out window's, unless set), "all" or "omarchy".
   function lookup(row) {
     if (row.sidebar) return { value: sidebarOptions[row.key], from: "own" }
     if (row.global) {
@@ -135,6 +140,10 @@ Scope {
     var kind = row.follows || tab
     var own = (kinds[kind] || {})[row.key]
     if (own !== null && own !== undefined) return { value: own, from: row.follows ? row.follows : "own" }
+    if (kind === "popped") {
+      var fl = (kinds.floating || {})[row.key]
+      if (fl !== null && fl !== undefined) return { value: fl, from: "floating" }
+    }
     if (kind !== "all") {
       var all = (kinds.all || {})[row.key]
       if (all !== null && all !== undefined) return { value: all, from: "all" }
@@ -176,6 +185,7 @@ Scope {
     else if (typeof v !== "number") text = row.key.indexOf("opacity") === 0 || row.key === "background_opacity" ? "Omarchy's" : "theme's"
     else text = row.unit === "%" ? Math.round(v * 100) + "%" : Math.round(v) + " px"
     if (row.follows && l.from === row.follows) text += "  · " + row.follows
+    else if (l.from === "floating") text += "  · floating"
     else if (l.from === "all") text += "  · all"
     else if (l.from === "omarchy" && tab !== "all" && !row.global) text += "  · Omarchy"
     return text
@@ -554,9 +564,9 @@ Scope {
             anchors.leftMargin: Style.space(14)
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: !root.resettable ? (root.tab === "all" ? "Nothing to reset: Omarchy's look" : "Nothing to reset: all windows' look")
+            text: !root.resettable ? (root.tab === "all" ? "Nothing to reset: Omarchy's look" : "Nothing to reset: " + root.parentLook + " look")
                 : root.confirming ? "Press again to reset " + (root.tab === "all" ? "every tab" : "this tab")
-                                  : (root.tab === "all" ? "Reset everything to Omarchy's look" : "Reset this tab to all windows'")
+                                  : (root.tab === "all" ? "Reset everything to Omarchy's look" : "Reset this tab to " + root.parentLook)
             color: parent.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
             font.family: Style.font.menuFamily
             font.pixelSize: Style.font.body
@@ -577,7 +587,7 @@ Scope {
           width: parent.width
           topPadding: Style.space(8)
           textFormat: Text.PlainText
-          text: "Tab next tab · ↑↓ choose · ←→ change · ⌫ back to " + (root.tab === "all" ? "Omarchy's" : "all windows'") + " · Enter on reset · Esc close"
+          text: "Tab next tab · ↑↓ choose · ←→ change · ⌫ back to " + (root.tab === "all" ? "Omarchy's" : root.parentLook) + " · Enter on reset · Esc close"
           color: Commons.Color.menu.text
           opacity: 0.45
           font.family: Style.font.menuFamily

@@ -9,6 +9,9 @@
 --   tiled      Hyprland's own settings (every window starts from these)
 --   floating   a window rule for floating windows, and the rounding set on
 --              each one as it floats (rules can't round past 20)
+--   popped     windows popped out with Omarchy's SUPER + O (tagged "pop"): as
+--              floating ones unless set here (it takes floating's values,
+--              not all's), by rules on the tag
 --
 --   sidebars   (the Sidebar plugin) and
 --   pinned     (the Dock plugin) style their windows when they take them in,
@@ -80,12 +83,13 @@ local OPTIONS = {
   -- Menus only: how solid their background is, 0 to 1.
   background_opacity = "number",
 }
-local KINDS = { "all", "tiled", "floating", "sidebars", "pinned", "menus" }
+local KINDS = { "all", "tiled", "floating", "popped", "sidebars", "pinned", "menus" }
 
 local defaults = {
   all = {},
   tiled = {},
   floating = {},
+  popped = {},
   sidebars = {},
   pinned = {},
   menus = {},
@@ -97,7 +101,7 @@ local defaults = {
   shadow_unfocused = true, -- false: only the focused window has one
 }
 
-local config = { all = {}, tiled = {}, floating = {}, sidebars = {}, pinned = {}, menus = {} }
+local config = { all = {}, tiled = {}, floating = {}, popped = {}, sidebars = {}, pinned = {}, menus = {} }
 for k, v in pairs(defaults) do
   if type(v) ~= "table" then
     config[k] = v
@@ -155,6 +159,9 @@ end
 -- A kind's value for an option: its own, else all windows'.
 local function value(kind, option)
   local v = config[kind][option]
+  if v == nil and kind == "popped" then
+    return value("floating", option)
+  end
   if v == nil then
     v = config.all[option]
   end
@@ -388,11 +395,19 @@ local function is_sidebar(window)
   local ws = window.workspace and window.workspace.name or ""
   return ws:match("^special:sidebar%d*$") ~= nil
 end
+local function is_popped(window)
+  for _, tag in ipairs(window.tags or {}) do
+    if tag:gsub("%*$", "") == "pop" then
+      return true
+    end
+  end
+  return false
+end
 local function round(window)
   if window == nil or is_sidebar(window) then
     return
   end
-  local r = value("floating", "rounding")
+  local r = value(is_popped(window) and "popped" or "floating", "rounding")
   local selector = "address:" .. window.address
   if window.floating and r then
     hl.dispatch(hl.dsp.window.set_prop({ prop = "rounding", value = tostring(math.floor(r)), window = selector }))
@@ -465,6 +480,38 @@ local function apply()
   else
     no_rule("window-style-floating-opacity")
   end
+
+  -- Popped out: rules on Omarchy's "pop" tag for what differs from floating
+  -- (made after the floating ones, so they win).
+  local function differs_popped(option)
+    return value("popped", option) ~= value("floating", option)
+  end
+  local pspec = {}
+  if differs_popped("border") or differs_popped("border_size") then
+    local w = border_width("popped")
+    pspec.border_size = math.floor(w or omarchy_border_size)
+  end
+  if differs_popped("border_colour") or differs_popped("border_colour_unfocused")
+      or differs_popped("border_opacity") or differs_popped("border_opacity_unfocused") then
+    local a, i = border_colours("popped")
+    a = a or active or theme_rgba(theme_active)
+    i = i or inactive or theme_rgba(theme_inactive)
+    if a then
+      pspec.border_color = a .. " " .. (i or a)
+    end
+  end
+  if next(pspec) then
+    pspec.match = { tag = "pop" }
+    rule("window-style-popped", pspec)
+  else
+    no_rule("window-style-popped")
+  end
+  local o_popped = opacity_of("popped")
+  if o_popped and (differs_popped("opacity") or differs_popped("opacity_unfocused")) then
+    rule("window-style-popped-opacity", { match = { tag = "pop" }, opacity = o_popped })
+  else
+    no_rule("window-style-popped-opacity")
+  end
   for _, w in ipairs(hl.get_windows()) do
     guard("rounding a floating window", round)(w)
   end
@@ -476,7 +523,8 @@ local function apply()
   -- turned it on). The two rules always exist, and only their value changes:
   -- open windows take a replaced rule at once, but not a new one.
   local shadow_tiled, shadow_floating = value("tiled", "shadow") == true, value("floating", "shadow") == true
-  local any = shadow_tiled or shadow_floating or value("sidebars", "shadow") == true
+  local shadow_popped = value("popped", "shadow") == true
+  local any = shadow_tiled or shadow_floating or shadow_popped or value("sidebars", "shadow") == true
     or value("pinned", "shadow") == true
   if any then
     local alpha = string.format("%02x", math.floor(math.max(0, math.min(1, config.shadow_opacity)) * 255 + 0.5))
@@ -497,6 +545,7 @@ local function apply()
   end
   rule("window-style-tiled-no-shadow", { match = { float = false }, no_shadow = not shadow_tiled })
   rule("window-style-floating-no-shadow", { match = { float = true }, no_shadow = not shadow_floating })
+  rule("window-style-popped-no-shadow", { match = { tag = "pop" }, no_shadow = not shadow_popped })
 
   guard("styling the menus", write_menus)()
 
