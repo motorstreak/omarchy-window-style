@@ -512,6 +512,15 @@ local function apply()
   else
     no_rule("window-style-popped-opacity")
   end
+  -- A rule made new doesn't reach windows already open (a replaced one does):
+  -- the windows popped out now take the tag again, which checks their rules.
+  for _, w in ipairs(hl.get_windows()) do
+    if is_popped(w) then
+      local selector = "address:" .. w.address
+      hl.dispatch(hl.dsp.window.tag({ tag = "-pop", window = selector }))
+      hl.dispatch(hl.dsp.window.tag({ tag = "+pop", window = selector }))
+    end
+  end
   for _, w in ipairs(hl.get_windows()) do
     guard("rounding a floating window", round)(w)
   end
