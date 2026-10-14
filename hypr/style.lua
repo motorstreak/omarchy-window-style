@@ -407,10 +407,40 @@ local function is_popped(window)
   end
   return false
 end
+-- Border colours: a window the Sidebar or Dock plugin let go of keeps the
+-- colours they set on it, which beat any rule (and "unset" leaves it with
+-- none). So a popped-out window gets its colours set on it here, and keeps
+-- getting its kind's (floating or tiled) once back in, as they change. Sidebars
+-- and docked windows are their plugins'.
+local framed = {} -- address -> true: colours set here
+local function rgba_of(t)
+  return t[1] and string.format("rgba(%s%02x)", t[1], t[2] or 255) or nil
+end
+local function frame(window)
+  local popped = is_popped(window)
+  if not popped and (not framed[window.address] or window.pinned) then
+    return
+  end
+  local kind = popped and "popped" or (window.floating and "floating" or "tiled")
+  local a, i = border_colours(kind)
+  local ta, ti = border_colours("tiled")
+  a = a or ta or rgba_of(theme_active)
+  i = i or ti or rgba_of(theme_inactive)
+  local selector = "address:" .. window.address
+  if a then
+    hl.dispatch(hl.dsp.window.set_prop({ prop = "active_border_color", value = a, window = selector }))
+  end
+  if i then
+    hl.dispatch(hl.dsp.window.set_prop({ prop = "inactive_border_color", value = i, window = selector }))
+  end
+  framed[window.address] = true
+end
+
 local function round(window)
   if window == nil or is_sidebar(window) then
     return
   end
+  frame(window)
   local r = value(is_popped(window) and "popped" or "floating", "rounding")
   local selector = "address:" .. window.address
   if window.floating and r then
@@ -425,6 +455,7 @@ hl.on("window.update_rules", guard("rounding a floating window", round))
 hl.on("window.close", function(window)
   if window and window.address then
     rounded[window.address] = nil
+    framed[window.address] = nil
   end
 end)
 
