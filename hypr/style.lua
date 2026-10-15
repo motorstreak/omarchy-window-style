@@ -465,6 +465,31 @@ end)
 local write_menus -- defined with the menus, below
 local shell_rounding -- the rounding the shell was last told of
 
+-- The shadow switch and look (Hyprland's one for every window). On its own,
+-- for the global shadow settings: their arrows change it many times a second.
+local function apply_shadow()
+  local any = value("tiled", "shadow") == true or value("floating", "shadow") == true
+    or value("popped", "shadow") == true or value("sidebars", "shadow") == true
+    or value("pinned", "shadow") == true
+  if any then
+    local alpha = string.format("%02x", math.floor(math.max(0, math.min(1, config.shadow_opacity)) * 255 + 0.5))
+    local look
+    if config.shadow_look == "glow" then
+      local rgb = colour_in(theme_colors, "accent") or theme_active[1] or "000000"
+      look = { enabled = true, range = math.floor(config.shadow_size), render_power = 3, offset = { 0, 0 },
+        color = "rgba(" .. rgb .. alpha .. ")",
+        color_inactive = "rgba(" .. rgb .. (config.shadow_unfocused and alpha or "00") .. ")" }
+    else
+      look = { enabled = true, range = math.floor(config.shadow_size), render_power = 2, offset = { 0, 0 },
+        color = "rgba(000000" .. alpha .. ")",
+        color_inactive = "rgba(000000" .. (config.shadow_unfocused and alpha or "00") .. ")" }
+    end
+    hl.config({ decoration = { shadow = look } })
+  else
+    hl.config({ decoration = { shadow = { enabled = false } } })
+  end
+end
+
 local function apply()
   -- Tiled: Hyprland's own settings, Omarchy's where nothing is set.
   local width = border_width("tiled")
@@ -571,25 +596,7 @@ local function apply()
   -- open windows take a replaced rule at once, but not a new one.
   local shadow_tiled, shadow_floating = value("tiled", "shadow") == true, value("floating", "shadow") == true
   local shadow_popped = value("popped", "shadow") == true
-  local any = shadow_tiled or shadow_floating or shadow_popped or value("sidebars", "shadow") == true
-    or value("pinned", "shadow") == true
-  if any then
-    local alpha = string.format("%02x", math.floor(math.max(0, math.min(1, config.shadow_opacity)) * 255 + 0.5))
-    local look
-    if config.shadow_look == "glow" then
-      local rgb = colour_in(theme_colors, "accent") or theme_active[1] or "000000"
-      look = { enabled = true, range = math.floor(config.shadow_size), render_power = 3, offset = { 0, 0 },
-        color = "rgba(" .. rgb .. alpha .. ")",
-        color_inactive = "rgba(" .. rgb .. (config.shadow_unfocused and alpha or "00") .. ")" }
-    else
-      look = { enabled = true, range = math.floor(config.shadow_size), render_power = 2, offset = { 0, 0 },
-        color = "rgba(000000" .. alpha .. ")",
-        color_inactive = "rgba(000000" .. (config.shadow_unfocused and alpha or "00") .. ")" }
-    end
-    hl.config({ decoration = { shadow = look } })
-  else
-    hl.config({ decoration = { shadow = { enabled = false } } })
-  end
+  apply_shadow()
   rule("window-style-tiled-no-shadow", { match = { float = false }, no_shadow = not shadow_tiled })
   rule("window-style-floating-no-shadow", { match = { float = true }, no_shadow = not shadow_floating })
   rule("window-style-popped-no-shadow", { match = { tag = "pop" }, no_shadow = not shadow_popped })
@@ -825,6 +832,10 @@ local function set(kind, option, v)
       return
     end
     config[kind] = v
+    -- Only the shadow's look changes: the rest stays as it is.
+    apply_shadow()
+    save()
+    return
   else
     return
   end

@@ -197,10 +197,32 @@ Scope {
     return String(v)
   }
 
+  // One change at a time: each restyles windows, and arrows held down ask for
+  // more a second than Hyprland gets through, which then lagged behind for
+  // seconds. While one runs, only the newest value of each setting waits.
+  property var queued: ({}) // "kind.key" -> the call
+  property var queuedOrder: []
   function send(key, v, global) {
     var call = global ? "window_style.set('" + key + "', nil, " + luaValue(v) + ")"
                       : "window_style.set('" + tab + "', '" + key + "', " + luaValue(v) + ")"
-    Quickshell.execDetached(["hyprctl", "eval", call])
+    var id = (global ? "" : tab) + "." + key
+    var q = Object.assign({}, queued)
+    queuedOrder = queuedOrder.filter(function(i) { return i !== id }).concat([id])
+    q[id] = call
+    queued = q
+    if (!sender.running) flush()
+  }
+  function flush() {
+    if (queuedOrder.length === 0) return
+    var calls = queuedOrder.map(function(id) { return queued[id] })
+    queued = {}
+    queuedOrder = []
+    sender.command = ["hyprctl", "eval", calls.join("; ")]
+    sender.running = true
+  }
+  Process {
+    id: sender
+    onExited: root.flush()
   }
 
   function store(key, v, global) {
@@ -290,7 +312,12 @@ Scope {
     }
     kinds = k
     index = rows.length - 1
-    Quickshell.execDetached(["hyprctl", "eval", "window_style.reset('" + (tab === "all" ? "everything" : tab) + "')"])
+    // After anything still waiting, which the reset then undoes.
+    var q = Object.assign({}, queued)
+    q["reset"] = "window_style.reset('" + (tab === "all" ? "everything" : tab) + "')"
+    queued = q
+    queuedOrder = queuedOrder.filter(function(id) { return id !== "reset" }).concat(["reset"])
+    if (!sender.running) flush()
     confirming = false
   }
 
