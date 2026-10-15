@@ -277,7 +277,10 @@ end
 local function own_border(colors, conf)
   local function first(key)
     local spec = colors:match("\n%s*" .. key .. '%s*=%s*"([^"]*)"')
-    local rgb, alpha = spec and spec:match("rgba?%((%x%x%x%x%x%x)(%x?%x?)%)")
+    if spec == nil then
+      return nil
+    end
+    local rgb, alpha = spec:match("rgba?%((%x%x%x%x%x%x)(%x?%x?)%)")
     if rgb then
       return rgb, alpha ~= "" and tonumber(alpha, 16) or 255
     end
