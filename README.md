@@ -96,6 +96,7 @@ return {
   shadow_size = 6,
   shadow_opacity = 0.2,
   shadow_unfocused = false,            -- only the focused window has a shadow
+  open_floating = true,                -- new windows open floating (Super + T tiles one)
 }
 ```
 

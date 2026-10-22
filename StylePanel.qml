@@ -25,7 +25,7 @@ Scope {
   property string currentTheme: ""
   readonly property var colours: palettes[tab] || []
   property var omarchy: ({})
-  property var shadow: ({}) // { look, size, opacity }
+  property var shadow: ({}) // { look, size, opacity, unfocused, open_floating }: the options for every window
   property var sidebarOptions: null // the Sidebar plugin's { dim, margin }
   property var sidebarPending: ({}) // changed, to be saved
   property string tab: "all"
@@ -64,6 +64,10 @@ Scope {
     { key: "shadow_opacity", label: "Shadow strength", hint: "0 is clear, 100 solid", type: "number", min: 0, max: 1, step: 0.05, unit: "%", global: true },
     { key: "shadow_unfocused", label: "Shadow on unfocused windows", hint: "Off: only the focused window has one", type: "bool", global: true }
   ]
+  // On Floating windows: whether new windows open floating (for every window).
+  readonly property var floatRows: [
+    { key: "open_floating", label: "Open new windows floating", hint: "Centred, at their own size; Super + T tiles one", type: "bool", global: true }
+  ]
   // Menus (Omarchy's shell draws them): the border, and how solid their
   // background is. Their rounding is shown, not set: the shell has one
   // rounding for all it draws, tiled windows' (Hyprland's own).
@@ -79,6 +83,7 @@ Scope {
     { key: "margin", label: "Margin", hint: "Gap to the screen edges and the bar", type: "number", min: 0, max: 120, step: 4, unit: "px", sidebar: true }
   ]
   readonly property var rows: tab === "all" ? options.concat(shadowRows) : tab === "menus" ? menuRows
+    : tab === "floating" ? floatRows.concat(options)
     : tab === "sidebars" && sidebarOptions !== null ? options.concat(sidebarRows) : options
   readonly property int count: rows.length + 1 // and the reset row
   // Whether the reset row has anything to do: an option set on this tab (on
@@ -91,7 +96,8 @@ Scope {
     }
     if (tab !== "all") return set(tab)
     for (var kind in kinds) if (set(kind)) return true
-    return shadow.look !== undefined && (shadow.look !== "glow" || shadow.size !== 6 || shadow.opacity !== 0.2 || shadow.unfocused === false)
+    return shadow.look !== undefined && (shadow.look !== "glow" || shadow.size !== 6 || shadow.opacity !== 0.2 || shadow.unfocused === false
+      || shadow.open_floating === true)
   }
   // The last row ↓ reaches: the reset row only when it can do something.
   readonly property int lastIndex: resettable ? rows.length : rows.length - 1
@@ -133,7 +139,8 @@ Scope {
   function lookup(row) {
     if (row.sidebar) return { value: sidebarOptions[row.key], from: "own" }
     if (row.global) {
-      var g = { shadow_look: shadow.look, shadow_size: shadow.size, shadow_opacity: shadow.opacity, shadow_unfocused: shadow.unfocused }[row.key]
+      var g = { shadow_look: shadow.look, shadow_size: shadow.size, shadow_opacity: shadow.opacity, shadow_unfocused: shadow.unfocused,
+                open_floating: shadow.open_floating }[row.key]
       return { value: g, from: "own" }
     }
     // A row another kind's value shows (a menus' rounding: tiled windows').
@@ -228,7 +235,8 @@ Scope {
   function store(key, v, global) {
     if (global) {
       var s = Object.assign({}, shadow)
-      s[{ shadow_look: "look", shadow_size: "size", shadow_opacity: "opacity", shadow_unfocused: "unfocused" }[key]] = v
+      s[{ shadow_look: "look", shadow_size: "size", shadow_opacity: "opacity", shadow_unfocused: "unfocused",
+          open_floating: "open_floating" }[key]] = v
       shadow = s
     } else {
       var k = Object.assign({}, kinds)
@@ -306,7 +314,7 @@ Scope {
     var k = Object.assign({}, kinds)
     if (tab === "all") {
       for (var name in k) k[name] = {}
-      shadow = { look: "glow", size: 6, opacity: 0.2, unfocused: true }
+      shadow = { look: "glow", size: 6, opacity: 0.2, unfocused: true, open_floating: false }
     } else {
       k[tab] = {}
     }

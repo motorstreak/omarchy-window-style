@@ -84,6 +84,8 @@ local OPTIONS = {
   background_opacity = "number",
 }
 local KINDS = { "all", "tiled", "floating", "popped", "sidebars", "pinned", "menus" }
+-- The options for every window at once.
+local GLOBALS = { "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused", "open_floating" }
 
 local defaults = {
   all = {},
@@ -99,6 +101,9 @@ local defaults = {
   shadow_size = 6, -- its reach in pixels
   shadow_opacity = 0.2, -- 0 (clear) to 1 (solid)
   shadow_unfocused = true, -- false: only the focused window has one
+  -- New windows open floating (centred, at their own size) instead of tiled;
+  -- SUPER + T tiles one. Dialogs float either way.
+  open_floating = false,
 }
 
 local config = { all = {}, tiled = {}, floating = {}, popped = {}, sidebars = {}, pinned = {}, menus = {} }
@@ -467,6 +472,16 @@ local shell_rounding -- the rounding the shell was last told of
 
 -- The shadow switch and look (Hyprland's one for every window). On its own,
 -- for the global shadow settings: their arrows change it many times a second.
+-- New windows floating: a rule every window matches (floating is taken as a
+-- window opens, so the ones open already stay as they are).
+local function apply_open_floating()
+  if config.open_floating then
+    rule("window-style-open-floating", { match = { class = ".*" }, float = true })
+  else
+    no_rule("window-style-open-floating", { class = ".*" })
+  end
+end
+
 local function apply_shadow()
   local any = value("tiled", "shadow") == true or value("floating", "shadow") == true
     or value("popped", "shadow") == true or value("sidebars", "shadow") == true
@@ -491,6 +506,7 @@ local function apply_shadow()
 end
 
 local function apply()
+  apply_open_floating()
   -- Tiled: Hyprland's own settings, Omarchy's where nothing is set.
   local width = border_width("tiled")
   local active, inactive = border_colours("tiled")
@@ -804,7 +820,7 @@ local function save()
       lines[#lines + 1] = "  },"
     end
   end
-  for _, k in ipairs({ "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused" }) do
+  for _, k in ipairs(GLOBALS) do
     if config[k] ~= defaults[k] then
       lines[#lines + 1] = "  " .. k .. " = " .. lua_value(config[k]) .. ","
     end
@@ -827,13 +843,17 @@ local function set(kind, option, v)
     end
     config[kind][option] = v
   elseif option == nil and (kind == "shadow_look" or kind == "shadow_size" or kind == "shadow_opacity"
-      or kind == "shadow_unfocused") then
+      or kind == "shadow_unfocused" or kind == "open_floating") then
     if type(v) ~= type(defaults[kind]) then
       return
     end
     config[kind] = v
-    -- Only the shadow's look changes: the rest stays as it is.
-    apply_shadow()
+    -- Only that changes: the rest stays as it is.
+    if kind == "open_floating" then
+      apply_open_floating()
+    else
+      apply_shadow()
+    end
     save()
     return
   else
@@ -849,7 +869,7 @@ local function reset(kind)
     for _, k in ipairs(KINDS) do
       config[k] = {}
     end
-    for _, k in ipairs({ "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused" }) do
+    for _, k in ipairs(GLOBALS) do
       config[k] = defaults[k]
     end
   elseif config[kind] ~= nil then
@@ -947,7 +967,8 @@ local function open(tab, index)
   local payload = string.format(
     '{"monitor":%s,"tab":%s,"index":%d,"kinds":{%s},"present":{%s},"palettes":{%s},"unfocused":{%s},'
       .. '"themes":[%s],"current_theme":%s,"sidebar":%s,'
-      .. '"omarchy":{"border_size":%d,"rounding":%d},"shadow":{"look":%s,"size":%s,"opacity":%s,"unfocused":%s}}',
+      .. '"omarchy":{"border_size":%d,"rounding":%d},"shadow":{"look":%s,"size":%s,"opacity":%s,"unfocused":%s,'
+      .. '"open_floating":%s}}',
     json_string(m and m.name or ""), json_string(tab or "all"), tonumber(index) or 0, table.concat(kinds, ","),
     table.concat(present, ","), table.concat(palettes, ","), table.concat(unfocused, ","),
     table.concat(themes, ","), json_string(current_name),
@@ -956,7 +977,7 @@ local function open(tab, index)
     (type(sidebar) == "table" and sidebar.style_options) and sidebar.style_options() or "null",
     omarchy_border_size, omarchy_rounding,
     json(config.shadow_look), json(config.shadow_size), json(config.shadow_opacity),
-    json(config.shadow_unfocused))
+    json(config.shadow_unfocused), json(config.open_floating))
   hl.exec_cmd("omarchy-shell -q window-style-panel open " .. quote(payload))
 end
 
