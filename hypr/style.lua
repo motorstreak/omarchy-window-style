@@ -553,8 +553,10 @@ local function apply()
   else
     no_rule("window-style-floating", { float = true })
   end
+  -- Always, not only when it differs from tiled: the tiled rule leaves floating
+  -- windows (sidebars too) to Omarchy's own opacity rule.
   local o_floating = opacity_of("floating")
-  if o_floating and (differs("opacity") or differs("opacity_unfocused")) then
+  if o_floating then
     rule("window-style-floating-opacity", { match = { tag = "default-opacity", float = true }, opacity = o_floating })
   else
     no_rule("window-style-floating-opacity", { tag = "default-opacity", float = true })

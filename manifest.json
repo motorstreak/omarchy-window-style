@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "window-style",
   "name": "Window Style",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "author": "Navin Samuel",
   "description": "How every window looks, set once for all windows and per kind (tiled, floating): border, theme colour, rounding, shadow and opacity.",
   "kinds": [
