@@ -734,6 +734,9 @@ local function shell_values(kind)
     keys["border-alpha"] = opacity
   end
   local width = border_width(kind)
+  if width == nil and kind == "bar" and value(kind, "border") == true then
+    width = 1 -- turned on without a width (the bar takes none from all windows)
+  end
   if width ~= nil then
     keys["border-width"] = math.floor(width)
   end

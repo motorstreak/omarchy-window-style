@@ -85,7 +85,10 @@ Scope {
   ]
   // The bar: Omarchy's bar's background, and the Island Bar plugin's islands
   // (their border and corners). Unset rows take nothing from All windows.
-  readonly property var barRows: options.filter(function(r) { return menuKeys.indexOf(r.key) >= 0 }).concat([
+  readonly property var barRows: options.filter(function(r) { return menuKeys.indexOf(r.key) >= 0 }).map(function(r) {
+    // Turned on without a width, the border is 1 px.
+    return r.key === "border_size" ? Object.assign({}, r, { unset: "1 px" }) : r
+  }).concat([
     { key: "background_opacity", label: "Background opacity", hint: "The bar, or its islands; 0 is clear", type: "number", min: 0, max: 1, step: 0.05, unit: "%" },
     { key: "rounding", label: "Island rounding", hint: "The islands' corner radius (Island Bar plugin)", type: "number", min: 0, max: 30, step: 1, unit: "px", unset: "fully round" }
   ])
