@@ -41,6 +41,7 @@ Scope {
     // The Dock plugin's windows (the kind is "pinned"; Omarchy's pop-outs are pinned too).
     if (present.pinned) list.push({ kind: "pinned", label: "Docked" })
     list.push({ kind: "menus", label: "Menus" })
+    list.push({ kind: "bar", label: "Bar" })
     return list
   }
 
@@ -82,7 +83,13 @@ Scope {
     { key: "dim", label: "Dim behind", hint: "How much the rest of the screen dims while a sidebar shows", type: "number", min: 0, max: 1, step: 0.05, unit: "%", sidebar: true },
     { key: "margin", label: "Margin", hint: "Gap to the screen edges and the bar", type: "number", min: 0, max: 120, step: 4, unit: "px", sidebar: true }
   ]
-  readonly property var rows: tab === "all" ? options.concat(shadowRows) : tab === "menus" ? menuRows
+  // The bar: Omarchy's bar's background, and the Island Bar plugin's islands
+  // (their border and corners). Unset rows take nothing from All windows.
+  readonly property var barRows: options.filter(function(r) { return menuKeys.indexOf(r.key) >= 0 }).concat([
+    { key: "background_opacity", label: "Background opacity", hint: "The bar, or its islands; 0 is clear", type: "number", min: 0, max: 1, step: 0.05, unit: "%" },
+    { key: "rounding", label: "Island rounding", hint: "The islands' corner radius (Island Bar plugin)", type: "number", min: 0, max: 30, step: 1, unit: "px", unset: "fully round" }
+  ])
+  readonly property var rows: tab === "all" ? options.concat(shadowRows) : tab === "menus" ? menuRows : tab === "bar" ? barRows
     : tab === "floating" ? floatRows.concat(options)
     : tab === "sidebars" && sidebarOptions !== null ? options.concat(sidebarRows) : options
   readonly property int count: rows.length + 1 // and the reset row
@@ -151,6 +158,7 @@ Scope {
       var fl = (kinds.floating || {})[row.key]
       if (fl !== null && fl !== undefined) return { value: fl, from: "floating" }
     }
+    if (kind === "bar" && row.key !== "theme") return { value: row.key === "border" ? false : undefined, from: "omarchy" }
     if (kind !== "all") {
       var all = (kinds.all || {})[row.key]
       if (all !== null && all !== undefined) return { value: all, from: "all" }
@@ -189,6 +197,7 @@ Scope {
     else if (row.type === "enum") text = String(v)
     else if (row.type === "colour") { var c = colourOf(v); text = c ? c.label : String(v) }
     else if (row.type === "theme") text = v === "current" ? "Omarchy's (" + themeLabel(currentTheme) + ")" : themeLabel(v)
+    else if (typeof v !== "number" && row.unset) text = row.unset
     else if (typeof v !== "number") text = row.key.indexOf("opacity") === 0 || row.key === "background_opacity" ? "Omarchy's" : "theme's"
     else text = row.unit === "%" ? Math.round(v * 100) + "%" : Math.round(v) + " px"
     if (row.follows && l.from === row.follows) text += "  · " + row.follows
@@ -286,7 +295,7 @@ Scope {
       }
       v = colours[((at < 0 ? 0 : at + step) + colours.length) % colours.length].name
     } else {
-      if (typeof v !== "number") v = row.key.indexOf("opacity") === 0 || row.key === "background_opacity" ? 1 : row.min
+      if (typeof v !== "number") v = row.unset ? row.max : row.key.indexOf("opacity") === 0 || row.key === "background_opacity" ? 1 : row.min
       else v = Math.min(row.max, Math.max(row.min, Math.round((v + step * row.step) / row.step) * row.step))
       v = Math.round(v * 1000) / 1000
     }
