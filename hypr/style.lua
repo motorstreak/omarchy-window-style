@@ -418,9 +418,43 @@ end
 -- Border colours: a window the Sidebar or Dock plugin let go of keeps the
 -- colours they set on it, which beat any rule (and "unset" leaves it with
 -- none). So a popped-out window gets its colours set on it here, and keeps
--- getting its kind's (floating or tiled) once back in, as they change. Sidebars
--- and docked windows are their plugins'.
+-- getting its kind's (floating or tiled) once back in, as they change; so do
+-- the windows those plugins let go of (`adopt`). Sidebars and docked windows
+-- are their plugins'. The colours outlast a reload (a theme change reloads),
+-- so the windows are remembered in a file, and so are the ones the plugins
+-- listed before this took them over.
 local framed = {} -- address -> true: colours set here
+local framed_file = state_home .. "/omarchy-window-style/framed"
+local function save_framed()
+  os.execute("mkdir -p " .. quote(state_home .. "/omarchy-window-style"))
+  local f = io.open(framed_file, "w")
+  if f then
+    for address in pairs(framed) do
+      f:write(address, "\n")
+    end
+    f:close()
+  end
+end
+do
+  local pruned = false
+  for _, file in ipairs({ framed_file, state_home .. "/omarchy-dock/restored-borders",
+      state_home .. "/omarchy-sidebar/restored-borders" }) do
+    local f = io.open(file, "r")
+    if f then
+      for address in f:lines() do
+        if hl.get_window("address:" .. address) then
+          framed[address] = true
+        else
+          pruned = true
+        end
+      end
+      f:close()
+    end
+  end
+  if pruned then
+    save_framed()
+  end
+end
 local function rgba_of(t)
   return t[1] and string.format("rgba(%s%02x)", t[1], t[2] or 255) or nil
 end
@@ -441,7 +475,21 @@ local function frame(window)
   if i then
     hl.dispatch(hl.dsp.window.set_prop({ prop = "inactive_border_color", value = i, window = selector }))
   end
+  if not framed[window.address] then
+    framed[window.address] = true
+    save_framed()
+  end
+end
+
+-- A window the Sidebar or Dock plugin lets go of: its kind's colours from now on.
+local function adopt(window)
+  window = window and window.address and hl.get_window("address:" .. window.address)
+  if window == nil then
+    return
+  end
   framed[window.address] = true
+  frame(window)
+  save_framed()
 end
 
 local function round(window)
@@ -463,7 +511,10 @@ hl.on("window.update_rules", guard("rounding a floating window", round))
 hl.on("window.close", function(window)
   if window and window.address then
     rounded[window.address] = nil
-    framed[window.address] = nil
+    if framed[window.address] then
+      framed[window.address] = nil
+      save_framed()
+    end
   end
 end)
 
@@ -992,6 +1043,7 @@ end))
 -- For the plugins, the settings panel and tests.
 window_style = {
   look = look,
+  adopt = adopt,
   value = value,
   border_colours = border_colours,
   config = config,

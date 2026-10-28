@@ -117,7 +117,12 @@ plugin's). Tiled windows get Hyprland's own settings; floating ones a window
 rule for what differs, and their rounding set on each as it floats (rules can't
 round past 20); popped-out ones rules on Omarchy's `pop` tag, made after the
 floating ones; sidebars and docked windows are styled by their plugins, which
-ask `window_style.look(kind)`. It alone switches Hyprland's shadows on or off.
+ask `window_style.look(kind)`, and hand back the windows they let go of
+(`window_style.adopt(window)`). A window's border colour, once set on it, can't
+go back to the theme's, so popped-out and handed-back windows get their kind's
+colours set on them here, as those change and across reloads (a theme change
+reloads): they're listed in `~/.local/state/omarchy-window-style/framed`. It
+alone switches Hyprland's shadows on or off.
 
 ## Requirements
 
