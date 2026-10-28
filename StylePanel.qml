@@ -404,7 +404,9 @@ Scope {
     BorderSurface {
       id: card
 
-      width: Math.min(Style.space(600), panel.width - Style.gapsOut * 2)
+      // Wide enough for every tab on one line, with room to spare.
+      width: Math.min(Math.max(Style.space(600), tabRow.implicitWidth + Style.spacing.panelPadding * 2 + Style.space(32)),
+        panel.width - Style.gapsOut * 2)
       height: Math.min(panel.height - Style.gapsOut * 2, column.implicitHeight + Style.spacing.panelPadding * 2)
       anchors.centerIn: parent
       radius: Style.cornerRadius
@@ -471,6 +473,7 @@ Scope {
 
         // The tabs: Tab / Shift + Tab, or a click.
         Row {
+          id: tabRow
           width: parent.width
           spacing: Style.space(4)
           bottomPadding: Style.space(6)
