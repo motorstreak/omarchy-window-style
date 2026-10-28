@@ -27,6 +27,7 @@ Scope {
   property var omarchy: ({})
   property var shadow: ({}) // { look, size, opacity, unfocused, open_floating }: the options for every window
   property var sidebarOptions: null // the Sidebar plugin's { dim, margin }
+  property var agentOptions: null // the Agent Sidebar plugin's { open_as }
   property var sidebarPending: ({}) // changed, to be saved
   property string tab: "all"
   // Whose look a tab's unset rows take: popped-out windows take floating ones'.
@@ -92,7 +93,12 @@ Scope {
     { key: "background_opacity", label: "Background opacity", hint: "The bar, or its islands; 0 is clear", type: "number", min: 0, max: 1, step: 0.05, unit: "%" },
     { key: "rounding", label: "Island rounding", hint: "The islands' corner radius (Island Bar plugin)", type: "number", min: 0, max: 30, step: 1, unit: "px", unset: "fully round" }
   ])
-  readonly property var rows: tab === "all" ? options.concat(shadowRows) : tab === "menus" ? menuRows : tab === "bar" ? barRows
+  // On All windows: how the Agent Sidebar plugin's windows open, saved through it.
+  readonly property var agentRows: [
+    { key: "open_as", label: "Agent opens as", hint: "Super + A and new sessions (Agent Sidebar plugin)", type: "enum",
+      options: ["sidebar", "tiled", "floating", "popped", "docked"], agent: true }
+  ]
+  readonly property var rows: tab === "all" ? options.concat(shadowRows).concat(agentOptions !== null ? agentRows : []) : tab === "menus" ? menuRows : tab === "bar" ? barRows
     : tab === "floating" ? floatRows.concat(options)
     : tab === "sidebars" && sidebarOptions !== null ? options.concat(sidebarRows) : options
   readonly property int count: rows.length + 1 // and the reset row
@@ -124,6 +130,7 @@ Scope {
     omarchy = p.omarchy || {}
     shadow = p.shadow || {}
     sidebarOptions = p.sidebar && typeof p.sidebar === "object" ? p.sidebar : null
+    agentOptions = p.agent && typeof p.agent === "object" ? p.agent : null
     tab = tabs.some(function(t) { return t.kind === p.tab }) ? p.tab : "all"
     index = Math.max(0, Math.min(Number(p.index) || 0, lastIndex))
     confirming = false
@@ -148,6 +155,7 @@ Scope {
   // popped-out window's, unless set), "all" or "omarchy".
   function lookup(row) {
     if (row.sidebar) return { value: sidebarOptions[row.key], from: "own" }
+    if (row.agent) return { value: agentOptions[row.key], from: "own" }
     if (row.global) {
       var g = { shadow_look: shadow.look, shadow_size: shadow.size, shadow_opacity: shadow.opacity, shadow_unfocused: shadow.unfocused,
                 open_floating: shadow.open_floating }[row.key]
@@ -302,6 +310,13 @@ Scope {
       else v = Math.min(row.max, Math.max(row.min, Math.round((v + step * row.step) / row.step) * row.step))
       v = Math.round(v * 1000) / 1000
     }
+    if (row.agent) {
+      var ag = Object.assign({}, agentOptions)
+      ag[row.key] = v
+      agentOptions = ag
+      Quickshell.execDetached(["hyprctl", "eval", "agent_sidebar.set_open_as(" + luaValue(v) + ")"])
+      return
+    }
     if (row.sidebar) {
       var o = Object.assign({}, sidebarOptions)
       o[row.key] = v
@@ -318,7 +333,7 @@ Scope {
 
   // Back to all windows' value (or Omarchy's, on All windows).
   function clear(row) {
-    if (row.global || row.follows || row.sidebar || lookup(row).from !== "own") return
+    if (row.global || row.follows || row.sidebar || row.agent || lookup(row).from !== "own") return
     store(row.key, null, false)
   }
 
