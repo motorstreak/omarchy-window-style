@@ -80,10 +80,13 @@ local OPTIONS = {
   shadow = "boolean",
   opacity = "number", -- the window itself, 0.1 to 1
   opacity_unfocused = "number",
-  -- Menus only: how solid their background is, 0 to 1.
+  -- Menus and the bar only: how solid their background is, 0 to 1.
   background_opacity = "number",
 }
-local KINDS = { "all", "tiled", "floating", "popped", "sidebars", "pinned", "menus" }
+-- `bar` is Omarchy's bar (its background) and the Island Bar plugin's islands
+-- (their border and rounding); unlike the others it takes nothing from `all`
+-- but the theme.
+local KINDS = { "all", "tiled", "floating", "popped", "sidebars", "pinned", "menus", "bar" }
 -- The options for every window at once.
 local GLOBALS = { "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused", "open_floating" }
 
@@ -95,6 +98,7 @@ local defaults = {
   sidebars = {},
   pinned = {},
   menus = {},
+  bar = {},
   -- One shadow look for every window (Hyprland has one): "glow", in the
   -- theme's accent colour, or "shadow", large, faint and dark.
   shadow_look = "glow",
@@ -106,7 +110,7 @@ local defaults = {
   open_floating = false,
 }
 
-local config = { all = {}, tiled = {}, floating = {}, popped = {}, sidebars = {}, pinned = {}, menus = {} }
+local config = { all = {}, tiled = {}, floating = {}, popped = {}, sidebars = {}, pinned = {}, menus = {}, bar = {} }
 for k, v in pairs(defaults) do
   if type(v) ~= "table" then
     config[k] = v
@@ -159,6 +163,23 @@ do
   if #problems > 0 then
     notify("Problems in ~/.config/omarchy/window-style.lua: " .. table.concat(problems, "; "))
   end
+  -- The bar not styled here yet: what shell.toml's [bar] already says is taken
+  -- as its look (so it isn't written away), and kept from the next save.
+  if overrides.bar == nil then
+    local f = io.open(home .. "/.config/omarchy/shell.toml", "r")
+    local text = f and f:read("a") or ""
+    if f then
+      f:close()
+    end
+    local bar = ("\n" .. text):match("\n%s*%[bar%]%s*\n(.-)\n%s*%[") or ("\n" .. text):match("\n%s*%[bar%]%s*\n(.*)$") or ""
+    local function number(key)
+      return tonumber(("\n" .. bar):match("\n%s*" .. key:gsub("%-", "%%-") .. "%s*=%s*([%d.]+)"))
+    end
+    config.bar.background_opacity = number("background-alpha")
+    config.bar.border_opacity = number("border-alpha")
+    config.bar.border_size = number("border-width")
+    config.bar.rounding = number("island-radius")
+  end
 end
 
 -- A kind's value for an option: its own, else all windows'.
@@ -167,7 +188,7 @@ local function value(kind, option)
   if v == nil and kind == "popped" then
     return value("floating", option)
   end
-  if v == nil then
+  if v == nil and (kind ~= "bar" or option == "theme") then
     v = config.all[option]
   end
   return v
@@ -690,12 +711,14 @@ end
 local shell_file = home .. "/.config/omarchy/shell.toml"
 local MENU_SECTIONS = { "menu", "launcher", "popups", "notifications" }
 
-local function menu_values()
-  local colors, own = kind_colors("menus")
+-- The shell.toml keys for a kind: the menus', or the bar's (with its islands'
+-- rounding, which only the Island Bar plugin reads).
+local function shell_values(kind)
+  local colors, own = kind_colors(kind)
   local keys = {}
-  local name = value("menus", "border_colour")
+  local name = value(kind, "border_colour")
   if name ~= nil then
-    local theme = value("menus", "theme")
+    local theme = value(kind, "theme")
     local current = theme == nil or theme == "current"
     if current and (name == "accent" or name == "foreground") then
       keys["border"] = name -- the shell follows theme changes itself
@@ -706,25 +729,35 @@ local function menu_values()
       end
     end
   end
-  local opacity = value("menus", "border_opacity")
+  local opacity = value(kind, "border_opacity")
   if opacity ~= nil then
     keys["border-alpha"] = opacity
   end
-  local width = border_width("menus")
+  local width = border_width(kind)
   if width ~= nil then
     keys["border-width"] = math.floor(width)
   end
-  local background = value("menus", "background_opacity")
+  local background = value(kind, "background_opacity")
   if background ~= nil then
     keys["background-alpha"] = background
+  end
+  if kind == "bar" and value(kind, "rounding") ~= nil then
+    keys["island-radius"] = math.floor(value(kind, "rounding"))
   end
   return keys
 end
 
 local MENU_KEYS = { "border", "border-alpha", "border-width", "background-alpha" }
+local BAR_KEYS = { "border", "border-alpha", "border-width", "background-alpha", "island-radius" }
 
 function write_menus()
-  local wanted = menu_values()
+  local menus, bar = shell_values("menus"), shell_values("bar")
+  -- Each section's keys: the ones this plugin owns there, and what it wants.
+  local owned, wants = {}, {}
+  for _, sec in ipairs(MENU_SECTIONS) do
+    owned[sec], wants[sec] = MENU_KEYS, menus
+  end
+  owned.bar, wants.bar = BAR_KEYS, bar
   local f = io.open(shell_file, "r")
   local text = f and f:read("a") or ""
   if f then
@@ -736,22 +769,18 @@ function write_menus()
     end
     return (string.format("%.3f", v):gsub("0+$", ""):gsub("%.$", ""))
   end
-  local is_menu = {}
-  for _, sec in ipairs(MENU_SECTIONS) do
-    is_menu[sec] = true
-  end
   local out, section, done = {}, nil, {}
   local function finish(sec)
     -- Keys still wanted in this section, added at its end.
-    if sec and is_menu[sec] then
-      for _, k in ipairs(MENU_KEYS) do
-        if wanted[k] ~= nil and not (done[sec] and done[sec][k]) then
+    if sec and owned[sec] then
+      for _, k in ipairs(owned[sec]) do
+        if wants[sec][k] ~= nil and not (done[sec] and done[sec][k]) then
           -- Before trailing blank lines.
           local at = #out + 1
           while at > 1 and out[at - 1] == "" do
             at = at - 1
           end
-          table.insert(out, at, k .. " = " .. toml(wanted[k]))
+          table.insert(out, at, k .. " = " .. toml(wants[sec][k]))
         end
       end
     end
@@ -766,16 +795,16 @@ function write_menus()
       done[header] = done[header] or {}
       out[#out + 1] = line
     else
-      local key = section and is_menu[section] and line:match("^%s*([%w-]+)%s*=")
+      local key = section and owned[section] and line:match("^%s*([%w-]+)%s*=")
       local ours = false
-      for _, k in ipairs(MENU_KEYS) do
+      for _, k in ipairs(key and owned[section] or {}) do
         if key == k then
           ours = true
         end
       end
       if ours then
-        if wanted[key] ~= nil and not done[section][key] then
-          out[#out + 1] = key .. " = " .. toml(wanted[key])
+        if wants[section][key] ~= nil and not done[section][key] then
+          out[#out + 1] = key .. " = " .. toml(wants[section][key])
           done[section][key] = true
         end
         -- (Not wanted: taken out.)
@@ -786,17 +815,19 @@ function write_menus()
   end
   finish(section)
   -- Sections not there yet, when something is wanted.
-  if next(wanted) then
-    for _, sec in ipairs(MENU_SECTIONS) do
-      if not seen[sec] then
-        if #out > 0 and out[#out] ~= "" then
-          out[#out + 1] = ""
-        end
-        out[#out + 1] = "[" .. sec .. "]"
-        for _, k in ipairs(MENU_KEYS) do
-          if wanted[k] ~= nil then
-            out[#out + 1] = k .. " = " .. toml(wanted[k])
-          end
+  local order = { "bar" }
+  for _, sec in ipairs(MENU_SECTIONS) do
+    order[#order + 1] = sec
+  end
+  for _, sec in ipairs(order) do
+    if not seen[sec] and next(wants[sec]) then
+      if #out > 0 and out[#out] ~= "" then
+        out[#out + 1] = ""
+      end
+      out[#out + 1] = "[" .. sec .. "]"
+      for _, k in ipairs(owned[sec]) do
+        if wants[sec][k] ~= nil then
+          out[#out + 1] = k .. " = " .. toml(wants[sec][k])
         end
       end
     end
