@@ -11,6 +11,7 @@ window only where it should differ:
 | Tiled | Ordinary tiled windows |
 | Floating | Floating windows |
 | Popped out | Windows popped out with Omarchy's `Super + O` (floating, on every workspace): as Floating unless set here |
+| Scratchpad | Windows on Omarchy's scratchpad (`Super + S`): as Tiled unless set here, so with borders and gaps between them, which Omarchy's drop-down console takes away |
 | Sidebars | Windows of the [Sidebar plugin](https://github.com/motorstreak/omarchy-sidebar), when it's installed |
 | Docked | Windows the [Dock plugin](https://github.com/motorstreak/omarchy-dock) docks, when it's installed (`pinned` in the config) |
 | Menus | Omarchy's menus, launcher, popups and notifications |
@@ -34,12 +35,13 @@ file, also run `omarchy restart shell`. Remove it with
 Sidebars tab).
 
 - `Tab` / `Shift + Tab` (or a click) switch tabs: All windows, Tiled, Floating,
-  Popped out, Sidebars, Docked, Menus.
+  Popped out, Scratchpad, Sidebars, Docked, Menus.
 - `↑` / `↓` choose a row; `←` / `→` (or a click) change it. A change shows at
   once and is saved.
 - On a kind's tab, values it takes from All windows are dimmed and marked
   "· all" (or "· Omarchy" where nothing is set); on Popped out, values it takes
-  from Floating are marked "· floating". Changing one sets it for that
+  from Floating are marked "· floating", and on Scratchpad, those from Tiled
+  "· tiled". Changing one sets it for that
   kind; `Backspace` hands it back.
 - **Theme**, at the top of each tab: the Omarchy theme that kind takes its
   colours from. The first choice, "Omarchy's", follows the theme Omarchy is
@@ -55,6 +57,10 @@ Sidebars tab).
   the bar). They're the Sidebar plugin's own options, which its settings
   (`Super + Alt + S`) then leave to this panel: shown at once and saved into
   `~/.config/omarchy/sidebar.lua`; the tab's reset leaves them.
+- The Scratchpad tab also has **Height** (how much of the screen it drops
+  down over, 30% to 100%; Omarchy's is 50%), **Gaps between windows** and
+  **Gaps to screen edges** (unset: as on other workspaces). Its rounding is always Tiled's: Hyprland rounds tiled windows
+  as one.
 - The bottom row resets the tab (on All windows: everything, back to Omarchy's
   look): `Enter` (or a click) twice; the arrows never reset. It's greyed out,
   and skipped, when the tab has nothing set.
@@ -91,6 +97,7 @@ return {
   floating = { rounding = 20 },        -- only what differs from all windows
   sidebars = { border_colour = "color2", border_opacity = 1 },
   pinned = { border = false, shadow = true },
+  scratchpad = { height = 0.75, gaps = 10 }, -- only what differs from tiled windows
   menus = { border_size = 3, background_opacity = 0.95 },
   shadow_look = "glow",                -- or "shadow"
   shadow_size = 6,
@@ -100,14 +107,16 @@ return {
 }
 ```
 
-Each kind (`all`, `tiled`, `floating`, `popped`, `sidebars`, `pinned`, `menus`) takes: `theme`
+Each kind (`all`, `tiled`, `floating`, `popped`, `scratchpad`, `sidebars`, `pinned`, `menus`) takes: `theme`
 (a theme's folder name, or "current": Omarchy's), `border`
 (false: none), `border_size`, `border_colour`, `border_colour_unfocused`,
 `border_opacity`, `border_opacity_unfocused`, `rounding`, `shadow`,
 `opacity`, `opacity_unfocused` (the window, 0.5 to 1; only windows Omarchy
 makes see-through, as apps that should stay solid opt out). `menus` also
 takes `background_opacity` (0 to 1), and ignores the window-only options
-(rounding, shadow, opacity).
+(rounding, shadow, opacity). `scratchpad` also takes `height` (0.3 to 1, the
+share of the screen it covers), `gaps` (pixels between its windows) and
+`gaps_out` (to the screen's edges), and ignores `rounding`.
 
 ## How it works
 
@@ -116,7 +125,9 @@ eval`, at start and after every config reload (the same loader as the Sidebar
 plugin's). Tiled windows get Hyprland's own settings; floating ones a window
 rule for what differs, and their rounding set on each as it floats (rules can't
 round past 20); popped-out ones rules on Omarchy's `pop` tag, made after the
-floating ones; sidebars and docked windows are styled by their plugins, which
+floating ones; the scratchpad Omarchy's workspace rule on it given back its
+borders, gaps and edge gaps (the console's height set by its bottom gap, as Omarchy does) (again whenever Omarchy remakes it, as the screens change),
+and rules on the workspace for what differs from tiled; sidebars and docked windows are styled by their plugins, which
 ask `window_style.look(kind)`, and hand back the windows they let go of
 (`window_style.adopt(window)`). A window's border colour, once set on it, can't
 go back to the theme's, so popped-out and handed-back windows get their kind's

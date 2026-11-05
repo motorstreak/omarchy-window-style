@@ -7,7 +7,7 @@ import qs.Commons as Commons
 import qs.Ui
 
 // The window style panel (SUPER + CTRL + ALT + S): a tab for all windows and
-// one for each kind (tiled, floating, and sidebars and pinned windows when
+// one for each kind (tiled, floating, popped out, the scratchpad, and sidebars and pinned windows when
 // their plugins are installed). A kind's tab shows its own values, and the
 // ones it takes from all windows dimmed; changing one sets it for that kind,
 // Backspace hands it back. Each change is applied at once and saved by
@@ -30,14 +30,15 @@ Scope {
   property var agentOptions: null // the Agent Sidebar plugin's { open_as }
   property var sidebarPending: ({}) // changed, to be saved
   property string tab: "all"
-  // Whose look a tab's unset rows take: popped-out windows take floating ones'.
-  readonly property string parentLook: tab === "popped" ? "floating windows'" : "all windows'"
+  // Whose look a tab's unset rows take: popped-out windows take floating ones',
+  // the scratchpad's tiled ones'.
+  readonly property string parentLook: tab === "popped" ? "floating windows'" : tab === "scratchpad" ? "tiled windows'" : "all windows'"
   property int index: 0
   property bool confirming: false
 
   readonly property var tabs: {
     var list = [{ kind: "all", label: "All windows" }, { kind: "tiled", label: "Tiled" }, { kind: "floating", label: "Floating" },
-      { kind: "popped", label: "Popped out" }]
+      { kind: "popped", label: "Popped out" }, { kind: "scratchpad", label: "Scratchpad" }]
     if (present.sidebars) list.push({ kind: "sidebars", label: "Sidebars" })
     // The Dock plugin's windows (the kind is "pinned"; Omarchy's pop-outs are pinned too).
     if (present.pinned) list.push({ kind: "pinned", label: "Docked" })
@@ -93,13 +94,22 @@ Scope {
     { key: "background_opacity", label: "Background opacity", hint: "The bar, or its islands; 0 is clear", type: "number", min: 0, max: 1, step: 0.05, unit: "%" },
     { key: "rounding", label: "Island rounding", hint: "The islands' corner radius (Island Bar plugin)", type: "number", min: 0, max: 30, step: 1, unit: "px", unset: "fully round" }
   ])
+  // On Scratchpad: its windows' rounding is tiled windows' (Hyprland rounds
+  // tiled windows as one), and the space between them.
+  readonly property var scratchpadRows: options.map(function(r) {
+    return r.key === "rounding" ? { key: "rounding", label: "Rounding", hint: "Always tiled windows': set it there (or on All windows)", type: "number", unit: "px", follows: "tiled" } : r
+  }).concat([
+    { key: "height", label: "Height", hint: "How much of the screen it covers, from the top; Omarchy's is 50%", type: "number", min: 0.3, max: 1, step: 0.05, unit: "%" },
+    { key: "gaps", label: "Gaps between windows", hint: "Omarchy's scratchpad has none; unset: as other workspaces", type: "number", min: 0, max: 40, step: 1, unit: "px" },
+    { key: "gaps_out", label: "Gaps to screen edges", hint: "Top and sides; Omarchy's scratchpad is flush; unset: as other workspaces", type: "number", min: 0, max: 60, step: 1, unit: "px" }
+  ])
   // On All windows: how the Agent Sidebar plugin's windows open, saved through it.
   readonly property var agentRows: [
     { key: "open_as", label: "Agent opens as", hint: "Super + A and new sessions (Agent Sidebar plugin)", type: "enum",
       options: ["sidebar", "tiled", "floating", "popped", "docked"], agent: true }
   ]
   readonly property var rows: tab === "all" ? options.concat(shadowRows).concat(agentOptions !== null ? agentRows : []) : tab === "menus" ? menuRows : tab === "bar" ? barRows
-    : tab === "floating" ? floatRows.concat(options)
+    : tab === "floating" ? floatRows.concat(options) : tab === "scratchpad" ? scratchpadRows
     : tab === "sidebars" && sidebarOptions !== null ? options.concat(sidebarRows) : options
   readonly property int count: rows.length + 1 // and the reset row
   // Whether the reset row has anything to do: an option set on this tab (on
@@ -147,12 +157,16 @@ Scope {
     case "shadow": return false
     case "border_colour": case "border_colour_unfocused": return "theme"
     case "theme": return "current"
+    case "gaps": return omarchy.gaps
+    case "gaps_out": return omarchy.gaps_out
+    case "height": return omarchy.height
     }
     return null
   }
 
   // A row's value on this tab, and where it comes from: "own", "floating" (a
-  // popped-out window's, unless set), "all" or "omarchy".
+  // popped-out window's, unless set), "tiled" (the scratchpad's), "all" or
+  // "omarchy".
   function lookup(row) {
     if (row.sidebar) return { value: sidebarOptions[row.key], from: "own" }
     if (row.agent) return { value: agentOptions[row.key], from: "own" }
@@ -168,6 +182,10 @@ Scope {
     if (kind === "popped") {
       var fl = (kinds.floating || {})[row.key]
       if (fl !== null && fl !== undefined) return { value: fl, from: "floating" }
+    }
+    if (kind === "scratchpad") {
+      var ti = (kinds.tiled || {})[row.key]
+      if (ti !== null && ti !== undefined) return { value: ti, from: "tiled" }
     }
     if (kind === "bar" && row.key !== "theme") return { value: row.key === "border" ? false : undefined, from: "omarchy" }
     if (kind !== "all") {
@@ -213,6 +231,7 @@ Scope {
     else text = row.unit === "%" ? Math.round(v * 100) + "%" : Math.round(v) + " px"
     if (row.follows && l.from === row.follows) text += "  · " + row.follows
     else if (l.from === "floating") text += "  · floating"
+    else if (l.from === "tiled") text += "  · tiled"
     else if (l.from === "all") text += "  · all"
     else if (l.from === "omarchy" && tab !== "all" && !row.global) text += "  · Omarchy"
     return text

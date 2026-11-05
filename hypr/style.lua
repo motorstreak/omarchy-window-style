@@ -12,6 +12,9 @@
 --   popped     windows popped out with Omarchy's SUPER + O (tagged "pop"): as
 --              floating ones unless set here (it takes floating's values,
 --              not all's), by rules on the tag
+--   scratchpad windows on Omarchy's scratchpad (SUPER + S): as tiled ones
+--              unless set here (it takes tiled's values), by rules on the
+--              workspace, and the space between them (Omarchy's has none)
 --
 --   sidebars   (the Sidebar plugin) and
 --   pinned     (the Dock plugin) style their windows when they take them in,
@@ -82,11 +85,18 @@ local OPTIONS = {
   opacity_unfocused = "number",
   -- Menus and the bar only: how solid their background is, 0 to 1.
   background_opacity = "number",
+  -- The scratchpad only: the space between its windows, and between them and
+  -- the screen's edges (its top and sides), in pixels.
+  gaps = "number",
+  gaps_out = "number",
+  -- The scratchpad only: how much of the usable screen it covers, from the
+  -- top, 0.3 to 1 (Omarchy's is 0.5).
+  height = "number",
 }
 -- `bar` is Omarchy's bar (its background) and the Island Bar plugin's islands
 -- (their border and rounding); unlike the others it takes nothing from `all`
 -- but the theme.
-local KINDS = { "all", "tiled", "floating", "popped", "sidebars", "pinned", "menus", "bar" }
+local KINDS = { "all", "tiled", "floating", "popped", "scratchpad", "sidebars", "pinned", "menus", "bar" }
 -- The options for every window at once.
 local GLOBALS = { "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused", "open_floating" }
 
@@ -95,6 +105,7 @@ local defaults = {
   tiled = {},
   floating = {},
   popped = {},
+  scratchpad = {},
   sidebars = {},
   pinned = {},
   menus = {},
@@ -110,7 +121,7 @@ local defaults = {
   open_floating = false,
 }
 
-local config = { all = {}, tiled = {}, floating = {}, popped = {}, sidebars = {}, pinned = {}, menus = {}, bar = {} }
+local config = { all = {}, tiled = {}, floating = {}, popped = {}, scratchpad = {}, sidebars = {}, pinned = {}, menus = {}, bar = {} }
 for k, v in pairs(defaults) do
   if type(v) ~= "table" then
     config[k] = v
@@ -188,6 +199,9 @@ local function value(kind, option)
   if v == nil and kind == "popped" then
     return value("floating", option)
   end
+  if v == nil and kind == "scratchpad" then
+    return value("tiled", option)
+  end
   if v == nil and (kind ~= "bar" or option == "theme") then
     v = config.all[option]
   end
@@ -242,6 +256,15 @@ local theme_inactive = { theme_border("general:col.inactive_border") }
 -- taken out again.
 local omarchy_border_size = tonumber(hl.get_config("general:border_size")) or 2
 local omarchy_rounding = tonumber(hl.get_config("decoration:rounding")) or 0
+local function gap_of(option, fallback)
+  local g = hl.get_config(option)
+  if type(g) == "table" then
+    return tonumber(g.top) or fallback
+  end
+  return tonumber(g) or fallback
+end
+local omarchy_gaps = gap_of("general:gaps_in", 5)
+local omarchy_gaps_out = gap_of("general:gaps_out", 10)
 
 -- Another theme's colors.toml, as text (yours before Omarchy's).
 local omarchy_path = os.getenv("OMARCHY_PATH") or "/usr/share/omarchy"
@@ -556,7 +579,8 @@ end
 
 local function apply_shadow()
   local any = value("tiled", "shadow") == true or value("floating", "shadow") == true
-    or value("popped", "shadow") == true or value("sidebars", "shadow") == true
+    or value("popped", "shadow") == true or value("scratchpad", "shadow") == true
+    or value("sidebars", "shadow") == true
     or value("pinned", "shadow") == true
   if any then
     local alpha = string.format("%02x", math.floor(math.max(0, math.min(1, config.shadow_opacity)) * 255 + 0.5))
@@ -574,6 +598,77 @@ local function apply_shadow()
     hl.config({ decoration = { shadow = look } })
   else
     hl.config({ decoration = { shadow = { enabled = false } } })
+  end
+end
+
+-- The scratchpad: Omarchy makes it a drop-down console (default/hypr/
+-- qconsole.lua), with a workspace rule taking its windows' borders and the
+-- space between them away. Here they're as tiled windows', or the
+-- scratchpad's own: the workspace rule given them back (it keeps the rest,
+-- the console's size and its first window), and window rules on the
+-- workspace for what differs from tiled. Omarchy's rule is made again when
+-- the screens change, so this is too, after it.
+--
+-- Omarchy sizes the console with its bottom gap (the screen below it) and
+-- puts it flush against the other edges. Its gaps can only be set all four
+-- at once, so the bottom one is worked out as Omarchy does, from the
+-- scratchpad's height (the share of the usable screen it covers, from the
+-- top), but never closer to the edge than the others, which take the
+-- scratchpad's edge gap.
+local OMARCHY_HEIGHT = 0.5 -- `share` in Omarchy's default/hypr/qconsole.lua
+local SCRATCHPAD = { workspace = "name:special:scratchpad" }
+local function scratchpad_workspace()
+  local spec = {
+    workspace = "special:scratchpad",
+    gaps_in = math.floor(value("scratchpad", "gaps") or omarchy_gaps),
+    no_border = border_width("scratchpad") == 0,
+  }
+  -- A screen going away answers nil to everything: Omarchy's edges stay.
+  local monitor = hl.get_active_monitor()
+  if monitor and monitor.scale and monitor.scale > 0 then
+    local reserved = monitor.reserved
+    local usable = monitor.height / monitor.scale - reserved.top - reserved.bottom
+    local edge = math.floor(value("scratchpad", "gaps_out") or omarchy_gaps_out)
+    local height = math.max(0.3, math.min(1, value("scratchpad", "height") or OMARCHY_HEIGHT))
+    spec.gaps_out = { top = edge, right = edge, left = edge,
+      bottom = math.max(edge, math.floor(usable * (1 - height))) }
+  end
+  hl.workspace_rule(spec)
+end
+hl.on("monitor.layout_changed", guard("styling the scratchpad", scratchpad_workspace))
+hl.on("monitor.focused", guard("styling the scratchpad", scratchpad_workspace))
+
+-- `active` and `inactive`: tiled windows' colours, which it otherwise has.
+local function apply_scratchpad(active, inactive)
+  scratchpad_workspace()
+  local function differs_scratchpad(option)
+    return value("scratchpad", option) ~= value("tiled", option)
+  end
+  local spec = {}
+  if differs_scratchpad("border") or differs_scratchpad("border_size") then
+    spec.border_size = math.floor(border_width("scratchpad") or omarchy_border_size)
+  end
+  if differs_scratchpad("theme") or differs_scratchpad("border_colour") or differs_scratchpad("border_colour_unfocused")
+      or differs_scratchpad("border_opacity") or differs_scratchpad("border_opacity_unfocused") then
+    local a, i = border_colours("scratchpad")
+    a = a or active
+    i = i or inactive
+    if a then
+      spec.border_color = a .. " " .. (i or a)
+    end
+  end
+  if next(spec) then
+    spec.match = SCRATCHPAD
+    rule("window-style-scratchpad", spec)
+  else
+    no_rule("window-style-scratchpad", SCRATCHPAD)
+  end
+  local opacity = opacity_of("scratchpad")
+  local opacity_match = { tag = "default-opacity", workspace = SCRATCHPAD.workspace }
+  if opacity and (differs_scratchpad("opacity") or differs_scratchpad("opacity_unfocused")) then
+    rule("window-style-scratchpad-opacity", { match = opacity_match, opacity = opacity })
+  else
+    no_rule("window-style-scratchpad-opacity", opacity_match)
   end
 end
 
@@ -665,6 +760,9 @@ local function apply()
   else
     no_rule("window-style-popped-opacity", { tag = "pop" })
   end
+  guard("styling the scratchpad", apply_scratchpad)(active or theme_rgba(theme_active),
+    inactive or theme_rgba(theme_inactive))
+
   -- A rule made new doesn't reach windows already open (a replaced one does):
   -- the windows popped out now take the tag again, which checks their rules.
   for _, w in ipairs(hl.get_windows()) do
@@ -690,6 +788,7 @@ local function apply()
   rule("window-style-tiled-no-shadow", { match = { float = false }, no_shadow = not shadow_tiled })
   rule("window-style-floating-no-shadow", { match = { float = true }, no_shadow = not shadow_floating })
   rule("window-style-popped-no-shadow", { match = { tag = "pop" }, no_shadow = not shadow_popped })
+  rule("window-style-scratchpad-no-shadow", { match = SCRATCHPAD, no_shadow = value("scratchpad", "shadow") ~= true })
 
   guard("styling the menus", write_menus)()
 
@@ -879,7 +978,7 @@ end
 -- (a comment of yours in it isn't kept).
 local config_file = home .. "/.config/omarchy/window-style.lua"
 local ORDER = { "theme", "border", "border_size", "border_colour", "border_opacity", "border_colour_unfocused",
-  "border_opacity_unfocused", "rounding", "shadow", "opacity", "opacity_unfocused", "background_opacity" }
+  "border_opacity_unfocused", "rounding", "shadow", "opacity", "opacity_unfocused", "background_opacity", "height", "gaps", "gaps_out" }
 local function lua_value(v)
   if type(v) == "string" then
     return string.format("%q", v)
@@ -1057,7 +1156,7 @@ local function open(tab, index)
   local payload = string.format(
     '{"monitor":%s,"tab":%s,"index":%d,"kinds":{%s},"present":{%s},"palettes":{%s},"unfocused":{%s},'
       .. '"themes":[%s],"current_theme":%s,"sidebar":%s,"agent":%s,'
-      .. '"omarchy":{"border_size":%d,"rounding":%d},"shadow":{"look":%s,"size":%s,"opacity":%s,"unfocused":%s,'
+      .. '"omarchy":{"border_size":%d,"rounding":%d,"gaps":%d,"gaps_out":%d,"height":%s},"shadow":{"look":%s,"size":%s,"opacity":%s,"unfocused":%s,'
       .. '"open_floating":%s}}',
     json_string(m and m.name or ""), json_string(tab or "all"), tonumber(index) or 0, table.concat(kinds, ","),
     table.concat(present, ","), table.concat(palettes, ","), table.concat(unfocused, ","),
@@ -1067,7 +1166,7 @@ local function open(tab, index)
     (type(sidebar) == "table" and sidebar.style_options) and sidebar.style_options() or "null",
     -- The Agent Sidebar plugin's open_as, on All windows.
     (type(agent_sidebar) == "table" and agent_sidebar.open_as) and ('{"open_as":' .. json(agent_sidebar.open_as()) .. "}") or "null",
-    omarchy_border_size, omarchy_rounding,
+    omarchy_border_size, omarchy_rounding, omarchy_gaps, omarchy_gaps_out, json(OMARCHY_HEIGHT),
     json(config.shadow_look), json(config.shadow_size), json(config.shadow_opacity),
     json(config.shadow_unfocused), json(config.open_floating))
   hl.exec_cmd("omarchy-shell -q window-style-panel open " .. quote(payload))
