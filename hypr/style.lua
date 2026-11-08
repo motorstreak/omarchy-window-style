@@ -609,8 +609,8 @@ end
 
 -- A new window, once open. An agent's the floating rule caught but its plugin
 -- wants tiled: tiled again. Otherwise, opened tiled on a regular workspace
--- (not a dialog, a sidebar's or the scratchpad's): popped out or docked, as
--- open_as says. Focused first: both act on the focused window.
+-- (not a sidebar's or the scratchpad's): floated (when a rule tiled it),
+-- popped out or docked, as open_as says. Focused first: both act on the focused window.
 hl.on("window.open", guard("opening a new window", function(window)
   if window == nil or window.address == nil then
     return
@@ -624,11 +624,15 @@ hl.on("window.open", guard("opening a new window", function(window)
     return
   end
   local mode = config.open_as
-  if mode ~= "popped" and mode ~= "docked" then
+  local ws = window.workspace and window.workspace.name or ""
+  if mode == "tiled" or window.floating or window.pinned or ws == "" or ws:sub(1, 8) == "special:" then
     return
   end
-  local ws = window.workspace and window.workspace.name or ""
-  if window.floating or window.pinned or ws == "" or ws:sub(1, 8) == "special:" then
+  -- Floating, but another rule tiled it (Omarchy's browser rule tiles Chrome
+  -- and other Chromium browsers): floated here instead, centred.
+  if mode == "floating" then
+    hl.dispatch(hl.dsp.window.float({ action = "enable", window = address }))
+    hl.dispatch(hl.dsp.window.center({ window = address }))
     return
   end
   hl.timer(guard("opening a new window", function()
