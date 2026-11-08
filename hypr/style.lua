@@ -607,6 +607,45 @@ local function agent_mode(window)
   return mine and agent_sidebar.open_as() or nil
 end
 
+-- A floating window bigger than its screen's visible area (the screen less the
+-- bar and other reserved edges, Omarchy's outer gap and the border) is shrunk
+-- to fit and centred. Apps that remember their size from a bigger or unscaled
+-- screen (Chrome) otherwise open running off the edge. Sidebars, docked and
+-- pinned windows and fullscreen ones are their own business.
+local function fit_to_screen(address)
+  local w = hl.get_window(address)
+  if w == nil or not w.floating or w.pinned or is_sidebar(w) or w.size == nil then
+    return
+  end
+  -- (fullscreen is a mode number: 0, not false, when it isn't.)
+  if w.fullscreen ~= nil and w.fullscreen ~= false and w.fullscreen ~= 0 then
+    return
+  end
+  local m = w.monitor
+  if m == nil or (m.width or 0) <= 0 or (m.height or 0) <= 0 or not m.scale or m.scale <= 0 then
+    return
+  end
+  local r = m.reserved or {}
+  local edge = omarchy_gaps_out
+  local border = border_width("floating") or omarchy_border_size
+  local max_w = math.floor(m.width / m.scale - (r.left or 0) - (r.right or 0) - 2 * (edge + border))
+  local max_h = math.floor(m.height / m.scale - (r.top or 0) - (r.bottom or 0) - 2 * (edge + border))
+  if max_w <= 0 or max_h <= 0 or (w.size.x <= max_w and w.size.y <= max_h) then
+    return
+  end
+  hl.dispatch(hl.dsp.window.resize({ x = math.min(w.size.x, max_w), y = math.min(w.size.y, max_h), window = address }))
+  hl.dispatch(hl.dsp.window.center({ window = address }))
+end
+
+-- Checked as it opens and again a moment later: some apps (Chrome) only set
+-- their remembered size after the window is shown.
+local function fit_soon(address)
+  fit_to_screen(address)
+  hl.timer(guard("fitting a new window to the screen", function()
+    fit_to_screen(address)
+  end), { timeout = 300, type = "oneshot" })
+end
+
 -- A new window, once open. An agent's the floating rule caught but its plugin
 -- wants tiled: tiled again. Otherwise, opened tiled on a regular workspace
 -- (not a sidebar's or the scratchpad's): floated (when a rule tiled it),
@@ -625,6 +664,9 @@ hl.on("window.open", guard("opening a new window", function(window)
   end
   local mode = config.open_as
   local ws = window.workspace and window.workspace.name or ""
+  if window.floating then
+    fit_soon(address)
+  end
   if mode == "tiled" or window.floating or window.pinned or ws == "" or ws:sub(1, 8) == "special:" then
     return
   end
@@ -633,6 +675,7 @@ hl.on("window.open", guard("opening a new window", function(window)
   if mode == "floating" then
     hl.dispatch(hl.dsp.window.float({ action = "enable", window = address }))
     hl.dispatch(hl.dsp.window.center({ window = address }))
+    fit_soon(address)
     return
   end
   hl.timer(guard("opening a new window", function()

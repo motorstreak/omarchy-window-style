@@ -116,6 +116,11 @@ Sidebar plugin's windows open as its own `open_as` says. The panel shows it on
 All windows as "Open new windows as". The old `open_floating = true` still
 reads as `open_as = "floating"`.
 
+A floating window that opens bigger than its screen's visible area (the screen
+less the bar, Omarchy's outer gap and the border) is shrunk to fit and
+centred, whatever `open_as` says. Apps that remember a size from a bigger
+screen, like Chrome, would otherwise open running off the edge.
+
 Each kind (`all`, `tiled`, `floating`, `popped`, `scratchpad`, `sidebars`, `pinned`, `menus`) takes: `theme`
 (a theme's folder name, or "current": Omarchy's), `border`
 (false: none), `border_size`, `border_colour`, `border_colour_unfocused`,
