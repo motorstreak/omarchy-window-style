@@ -25,7 +25,7 @@ Scope {
   property string currentTheme: ""
   readonly property var colours: palettes[tab] || []
   property var omarchy: ({})
-  property var shadow: ({}) // { look, size, opacity, unfocused, open_floating }: the options for every window
+  property var shadow: ({}) // { look, size, opacity, unfocused, open_as }: the options for every window
   property var sidebarOptions: null // the Sidebar plugin's { dim, margin }
   property var agentOptions: null // the Agent Sidebar plugin's { open_as }
   property var sidebarPending: ({}) // changed, to be saved
@@ -67,9 +67,10 @@ Scope {
     { key: "shadow_opacity", label: "Shadow strength", hint: "0 is clear, 100 solid", type: "number", min: 0, max: 1, step: 0.05, unit: "%", global: true },
     { key: "shadow_unfocused", label: "Shadow on unfocused windows", hint: "Off: only the focused window has one", type: "bool", global: true }
   ]
-  // On Floating windows: whether new windows open floating (for every window).
-  readonly property var floatRows: [
-    { key: "open_floating", label: "Open new windows floating", hint: "Centred, at their own size; Super + T tiles one", type: "bool", global: true }
+  // On All windows: how new windows open (every window but dialogs and the agent's).
+  readonly property var openRows: [
+    { key: "open_as", label: "Open new windows as", hint: "Floating: centred, Super + T tiles one; popped: as Super + O; docked: Dock plugin", type: "enum",
+      options: ["tiled", "floating", "popped", "docked"], global: true }
   ]
   // Menus (Omarchy's shell draws them): the border, and how solid their
   // background is. Their rounding is shown, not set: the shell has one
@@ -108,8 +109,8 @@ Scope {
     { key: "open_as", label: "Agent opens as", hint: "Super + A and new sessions (Agent Sidebar plugin)", type: "enum",
       options: ["sidebar", "tiled", "floating", "popped", "docked"], agent: true }
   ]
-  readonly property var rows: tab === "all" ? options.concat(shadowRows).concat(agentOptions !== null ? agentRows : []) : tab === "menus" ? menuRows : tab === "bar" ? barRows
-    : tab === "floating" ? floatRows.concat(options) : tab === "scratchpad" ? scratchpadRows
+  readonly property var rows: tab === "all" ? options.concat(shadowRows).concat(openRows).concat(agentOptions !== null ? agentRows : []) : tab === "menus" ? menuRows : tab === "bar" ? barRows
+    : tab === "scratchpad" ? scratchpadRows
     : tab === "sidebars" && sidebarOptions !== null ? options.concat(sidebarRows) : options
   readonly property int count: rows.length + 1 // and the reset row
   // Whether the reset row has anything to do: an option set on this tab (on
@@ -123,7 +124,7 @@ Scope {
     if (tab !== "all") return set(tab)
     for (var kind in kinds) if (set(kind)) return true
     return shadow.look !== undefined && (shadow.look !== "glow" || shadow.size !== 6 || shadow.opacity !== 0.2 || shadow.unfocused === false
-      || shadow.open_floating === true)
+      || (shadow.open_as !== undefined && shadow.open_as !== "tiled"))
   }
   // The last row ↓ reaches: the reset row only when it can do something.
   readonly property int lastIndex: resettable ? rows.length : rows.length - 1
@@ -172,7 +173,7 @@ Scope {
     if (row.agent) return { value: agentOptions[row.key], from: "own" }
     if (row.global) {
       var g = { shadow_look: shadow.look, shadow_size: shadow.size, shadow_opacity: shadow.opacity, shadow_unfocused: shadow.unfocused,
-                open_floating: shadow.open_floating }[row.key]
+                open_as: shadow.open_as }[row.key]
       return { value: g, from: "own" }
     }
     // A row another kind's value shows (a menus' rounding: tiled windows').
@@ -275,7 +276,7 @@ Scope {
     if (global) {
       var s = Object.assign({}, shadow)
       s[{ shadow_look: "look", shadow_size: "size", shadow_opacity: "opacity", shadow_unfocused: "unfocused",
-          open_floating: "open_floating" }[key]] = v
+          open_as: "open_as" }[key]] = v
       shadow = s
     } else {
       var k = Object.assign({}, kinds)
@@ -360,7 +361,7 @@ Scope {
     var k = Object.assign({}, kinds)
     if (tab === "all") {
       for (var name in k) k[name] = {}
-      shadow = { look: "glow", size: 6, opacity: 0.2, unfocused: true, open_floating: false }
+      shadow = { look: "glow", size: 6, opacity: 0.2, unfocused: true, open_as: "tiled" }
     } else {
       k[tab] = {}
     }

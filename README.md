@@ -103,9 +103,18 @@ return {
   shadow_size = 6,
   shadow_opacity = 0.2,
   shadow_unfocused = false,            -- only the focused window has a shadow
-  open_floating = true,                -- new windows open floating (Super + T tiles one)
+  open_as = "floating",                -- or "tiled", "popped" (Super + O's), "docked" (Dock plugin)
 }
 ```
+
+`open_as` is how new windows open: tiled (Omarchy's way), floating (centred,
+at their own size; Super + T tiles one), popped out as Super + O does, or
+docked to a screen edge (needs the [Dock plugin](https://github.com/motorstreak/omarchy-dock)).
+Dialogs float either way, and only windows opening tiled on a regular
+workspace pop out or dock (not a sidebar's or the scratchpad's). The Agent
+Sidebar plugin's windows open as its own `open_as` says. The panel shows it on
+All windows as "Open new windows as". The old `open_floating = true` still
+reads as `open_as = "floating"`.
 
 Each kind (`all`, `tiled`, `floating`, `popped`, `scratchpad`, `sidebars`, `pinned`, `menus`) takes: `theme`
 (a theme's folder name, or "current": Omarchy's), `border`

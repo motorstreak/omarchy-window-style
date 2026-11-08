@@ -98,7 +98,7 @@ local OPTIONS = {
 -- but the theme.
 local KINDS = { "all", "tiled", "floating", "popped", "scratchpad", "sidebars", "pinned", "menus", "bar" }
 -- The options for every window at once.
-local GLOBALS = { "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused", "open_floating" }
+local GLOBALS = { "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused", "open_as" }
 
 local defaults = {
   all = {},
@@ -116,10 +116,13 @@ local defaults = {
   shadow_size = 6, -- its reach in pixels
   shadow_opacity = 0.2, -- 0 (clear) to 1 (solid)
   shadow_unfocused = true, -- false: only the focused window has one
-  -- New windows open floating (centred, at their own size) instead of tiled;
-  -- SUPER + T tiles one. Dialogs float either way.
-  open_floating = false,
+  -- How new windows open: "tiled", "floating" (centred, at their own size;
+  -- SUPER + T tiles one), "popped" (as SUPER + O pops one out) or "docked"
+  -- (the Dock plugin). Dialogs float either way; the Agent Sidebar plugin's
+  -- windows open as its own open_as says.
+  open_as = "tiled",
 }
+local OPEN_AS = { tiled = true, floating = true, popped = true, docked = true }
 
 local config = { all = {}, tiled = {}, floating = {}, popped = {}, scratchpad = {}, sidebars = {}, pinned = {}, menus = {}, bar = {} }
 for k, v in pairs(defaults) do
@@ -143,6 +146,13 @@ do
     end
   elseif load_err and not load_err:find("No such file", 1, true) then
     problems[#problems + 1] = load_err
+  end
+  -- Before 0.14.0: open_floating = true (or false), now open_as.
+  if overrides.open_floating ~= nil then
+    if overrides.open_as == nil and type(overrides.open_floating) == "boolean" then
+      overrides.open_as = overrides.open_floating and "floating" or "tiled"
+    end
+    overrides.open_floating = nil
   end
   for k, v in pairs(overrides) do
     if config[k] ~= nil and type(config[k]) == "table" then
@@ -170,6 +180,10 @@ do
   if config.shadow_look ~= "glow" and config.shadow_look ~= "shadow" then
     problems[#problems + 1] = 'shadow_look must be "glow" or "shadow"'
     config.shadow_look = "glow"
+  end
+  if not OPEN_AS[config.open_as] then
+    problems[#problems + 1] = 'open_as must be "tiled", "floating", "popped" or "docked"'
+    config.open_as = "tiled"
   end
   if #problems > 0 then
     notify("Problems in ~/.config/omarchy/window-style.lua: " .. table.concat(problems, "; "))
@@ -569,13 +583,75 @@ local shell_rounding -- the rounding the shell was last told of
 -- for the global shadow settings: their arrows change it many times a second.
 -- New windows floating: a rule every window matches (floating is taken as a
 -- window opens, so the ones open already stay as they are).
-local function apply_open_floating()
-  if config.open_floating then
+local function apply_open_as()
+  if config.open_as == "floating" then
     rule("window-style-open-floating", { match = { class = ".*" }, float = true })
   else
     no_rule("window-style-open-floating", { class = ".*" })
   end
 end
+
+-- The Agent Sidebar plugin's windows: they open as its own open_as says.
+local function agent_mode(window)
+  if type(agent_sidebar) ~= "table" or type(agent_sidebar.open_as) ~= "function" then
+    return nil
+  end
+  local mine
+  if type(agent_sidebar.is_agent) == "function" then
+    mine = agent_sidebar.is_agent(window)
+  else
+    local class = window.class or ""
+    mine = class == "org.omarchy.agent" or class:sub(1, 18) == "org.omarchy.agent."
+      or class:match("^sidebar%.agent%.s") ~= nil
+  end
+  return mine and agent_sidebar.open_as() or nil
+end
+
+-- A new window, once open. An agent's the floating rule caught but its plugin
+-- wants tiled: tiled again. Otherwise, opened tiled on a regular workspace
+-- (not a dialog, a sidebar's or the scratchpad's): popped out or docked, as
+-- open_as says. Focused first: both act on the focused window.
+hl.on("window.open", guard("opening a new window", function(window)
+  if window == nil or window.address == nil then
+    return
+  end
+  local address = "address:" .. window.address
+  local agent = agent_mode(window)
+  if agent ~= nil then
+    if config.open_as == "floating" and window.floating and agent ~= "sidebar" and agent ~= "floating" then
+      hl.dispatch(hl.dsp.window.float({ action = "disable", window = address }))
+    end
+    return
+  end
+  local mode = config.open_as
+  if mode ~= "popped" and mode ~= "docked" then
+    return
+  end
+  local ws = window.workspace and window.workspace.name or ""
+  if window.floating or window.pinned or ws == "" or ws:sub(1, 8) == "special:" then
+    return
+  end
+  hl.timer(guard("opening a new window", function()
+    local w = hl.get_window(address)
+    if w == nil or w.floating then
+      return
+    end
+    hl.dispatch(hl.dsp.focus({ window = address }))
+    hl.timer(guard("opening a new window", function()
+      local active = hl.get_active_window()
+      if active == nil or active.address ~= window.address or active.floating then
+        return
+      end
+      if mode == "popped" then
+        hl.exec_cmd("omarchy-hyprland-window-pop")
+      elseif type(dock) == "table" and dock.toggle then
+        dock.toggle()
+      else
+        notify('open_as = "docked" needs the Dock plugin: https://github.com/motorstreak/omarchy-dock')
+      end
+    end), { timeout = 50, type = "oneshot" })
+  end), { timeout = 150, type = "oneshot" })
+end))
 
 local function apply_shadow()
   local any = value("tiled", "shadow") == true or value("floating", "shadow") == true
@@ -673,7 +749,7 @@ local function apply_scratchpad(active, inactive)
 end
 
 local function apply()
-  apply_open_floating()
+  apply_open_as()
   -- Tiled: Hyprland's own settings, Omarchy's where nothing is set.
   local width = border_width("tiled")
   local active, inactive = border_colours("tiled")
@@ -1032,14 +1108,14 @@ local function set(kind, option, v)
     end
     config[kind][option] = v
   elseif option == nil and (kind == "shadow_look" or kind == "shadow_size" or kind == "shadow_opacity"
-      or kind == "shadow_unfocused" or kind == "open_floating") then
-    if type(v) ~= type(defaults[kind]) then
+      or kind == "shadow_unfocused" or kind == "open_as") then
+    if type(v) ~= type(defaults[kind]) or (kind == "open_as" and not OPEN_AS[v]) then
       return
     end
     config[kind] = v
     -- Only that changes: the rest stays as it is.
-    if kind == "open_floating" then
-      apply_open_floating()
+    if kind == "open_as" then
+      apply_open_as()
     else
       apply_shadow()
     end
@@ -1157,7 +1233,7 @@ local function open(tab, index)
     '{"monitor":%s,"tab":%s,"index":%d,"kinds":{%s},"present":{%s},"palettes":{%s},"unfocused":{%s},'
       .. '"themes":[%s],"current_theme":%s,"sidebar":%s,"agent":%s,'
       .. '"omarchy":{"border_size":%d,"rounding":%d,"gaps":%d,"gaps_out":%d,"height":%s},"shadow":{"look":%s,"size":%s,"opacity":%s,"unfocused":%s,'
-      .. '"open_floating":%s}}',
+      .. '"open_as":%s}}',
     json_string(m and m.name or ""), json_string(tab or "all"), tonumber(index) or 0, table.concat(kinds, ","),
     table.concat(present, ","), table.concat(palettes, ","), table.concat(unfocused, ","),
     table.concat(themes, ","), json_string(current_name),
@@ -1168,7 +1244,7 @@ local function open(tab, index)
     (type(agent_sidebar) == "table" and agent_sidebar.open_as) and ('{"open_as":' .. json(agent_sidebar.open_as()) .. "}") or "null",
     omarchy_border_size, omarchy_rounding, omarchy_gaps, omarchy_gaps_out, json(OMARCHY_HEIGHT),
     json(config.shadow_look), json(config.shadow_size), json(config.shadow_opacity),
-    json(config.shadow_unfocused), json(config.open_floating))
+    json(config.shadow_unfocused), json(config.open_as))
   hl.exec_cmd("omarchy-shell -q window-style-panel open " .. quote(payload))
 end
 
