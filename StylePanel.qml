@@ -692,7 +692,8 @@ Scope {
           width: parent.width
           topPadding: Style.space(8)
           textFormat: Text.PlainText
-          text: "Tab next tab · ↑↓ choose · ←→ change · ⌫ back to " + (root.tab === "all" ? "Omarchy's" : root.parentLook) + " · Enter on reset · Esc close"
+          text: root.tab === "terminal" ? "Tab next tab · ↑↓ choose · ←→ change · Enter on the last row · Esc close"
+              : "Tab next tab · ↑↓ choose · ←→ change · ⌫ back to " + (root.tab === "all" ? "Omarchy's" : root.parentLook) + " · Enter on reset · Esc close"
           color: Commons.Color.menu.text
           opacity: 0.45
           font.family: Style.font.menuFamily
