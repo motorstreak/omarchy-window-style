@@ -78,6 +78,20 @@ All windows (a **glow** in the accent colour, or a faint dark **shadow**, its
 size and strength, and whether unfocused windows have one too or only the
 focused window); each kind only turns it on or off.
 
+The **Terminal** tab has effects for [Ghostty](https://ghostty.org), made
+with its custom shaders: a **Cursor trail** (a fading streak follows the
+cursor when it jumps two or more cells, like Kitty's `cursor_trail`) and a
+**Bloom** (text and the cursor glow softly), with its strength and size. The
+glow takes the text's colour against the theme's background, so it brightens
+on dark themes and stays soft on light ones. The plugin writes the shaders
+(from its `ghostty/` folder, values filled in) to
+`~/.local/state/omarchy-window-style/ghostty/` and lists them in
+`~/.config/ghostty/window-style`; the first time an effect is turned on it
+adds `config-file = ?window-style` to the end of `~/.config/ghostty/config`
+(written through, so a dotfiles link stays a link). Open Ghostty windows
+reload at once (SIGUSR2). Both cost GPU time: the trail keeps Ghostty
+animating while it's focused, and the bloom samples around every pixel.
+
 ## The file
 
 The panel saves to `~/.config/omarchy/window-style.lua`, which you can also
@@ -104,6 +118,10 @@ return {
   shadow_opacity = 0.2,
   shadow_unfocused = false,            -- only the focused window has a shadow
   open_as = "floating",                -- or "tiled", "popped" (Super + O's), "docked" (Dock plugin)
+  terminal_trail = true,               -- Ghostty: cursor trail
+  terminal_bloom = true,               -- Ghostty: bloom
+  terminal_bloom_strength = 0.35,      -- 0 to 1
+  terminal_bloom_size = 6,             -- pixels
 }
 ```
 

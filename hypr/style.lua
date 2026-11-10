@@ -98,7 +98,13 @@ local OPTIONS = {
 -- but the theme.
 local KINDS = { "all", "tiled", "floating", "popped", "scratchpad", "sidebars", "pinned", "menus", "bar" }
 -- The options for every window at once.
-local GLOBALS = { "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused", "open_as" }
+local GLOBALS = { "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused", "open_as",
+  "terminal_trail", "terminal_bloom", "terminal_bloom_strength", "terminal_bloom_size" }
+local TERMINAL = { "terminal_trail", "terminal_bloom", "terminal_bloom_strength", "terminal_bloom_size" }
+local is_global = {}
+for _, k in ipairs(GLOBALS) do
+  is_global[k] = true
+end
 
 local defaults = {
   all = {},
@@ -121,6 +127,12 @@ local defaults = {
   -- (the Dock plugin). Dialogs float either way; the Agent Sidebar plugin's
   -- windows open as its own open_as says.
   open_as = "tiled",
+  -- Ghostty's effects (custom shaders): a cursor trail like Kitty's, and a
+  -- soft bloom around text (its strength 0 to 1, its reach in pixels).
+  terminal_trail = false,
+  terminal_bloom = false,
+  terminal_bloom_strength = 0.35,
+  terminal_bloom_size = 6,
 }
 local OPEN_AS = { tiled = true, floating = true, popped = true, docked = true }
 
@@ -1146,6 +1158,111 @@ local function save()
   end
 end
 
+-- Terminal effects ------------------------------------------------------------------
+
+-- Ghostty's custom shaders: the cursor trail and the bloom. Ghostty can't hand
+-- values to a shader, so each is written out from the plugin's own (ghostty/)
+-- with the values filled in, to ~/.local/state/omarchy-window-style/ghostty/,
+-- and listed in ~/.config/ghostty/window-style. Ghostty's config includes that
+-- file (`config-file = ?window-style`, added the first time an effect is
+-- turned on). Ghostty reloads its config on SIGUSR2; only when something
+-- changed, as this runs on every Hyprland reload too.
+local xdg_config = os.getenv("XDG_CONFIG_HOME")
+if xdg_config == nil or xdg_config == "" then
+  xdg_config = home .. "/.config"
+end
+local ghostty_dir = xdg_config .. "/ghostty"
+local shader_dir = state_home .. "/omarchy-window-style/ghostty"
+
+local function read_file(path)
+  local f = io.open(path, "r")
+  if not f then
+    return nil
+  end
+  local text = f:read("a")
+  f:close()
+  return text
+end
+
+local function write_if_changed(path, text)
+  if read_file(path) == text then
+    return false
+  end
+  local f = io.open(path, "w")
+  if not f then
+    error("can't write " .. path)
+  end
+  f:write(text)
+  f:close()
+  return true
+end
+
+local function apply_terminal()
+  local main = read_file(ghostty_dir .. "/config")
+  if main == nil then
+    return -- no Ghostty
+  end
+  local include = ghostty_dir .. "/window-style"
+  local included = ("\n" .. main .. "\n"):find("\n%s*config%-file%s*=%s*%??window%-style%s*\n") ~= nil
+  local any = config.terminal_trail or config.terminal_bloom
+  -- Never turned on: Ghostty's folder is left alone.
+  if not any and not included and read_file(include) == nil then
+    return
+  end
+  local changed = false
+  local lines = { "# Ghostty effects from the Window Style plugin (SUPER + CTRL + ALT + S, Terminal tab).",
+    "# Written whole on every change there." }
+  local function shader(name, values)
+    local text = read_file(WINDOW_STYLE_DIR .. "/ghostty/" .. name .. ".glsl")
+    if text == nil then
+      error("the plugin's ghostty/" .. name .. ".glsl is missing")
+    end
+    text = text:gsub("@(%u+)@", function(k)
+      return values[k] and string.format("%.3f", values[k]) or nil
+    end)
+    local p = io.popen("mkdir -p " .. quote(shader_dir))
+    if p then
+      p:close()
+    end
+    local path = shader_dir .. "/" .. name .. ".glsl"
+    if write_if_changed(path, text) then
+      changed = true
+    end
+    lines[#lines + 1] = "custom-shader = " .. path
+  end
+  -- The trail first, so the bloom glows it too.
+  if config.terminal_trail then
+    shader("cursor-trail", {})
+  end
+  if config.terminal_bloom then
+    shader("bloom", {
+      STRENGTH = math.max(0, math.min(1, config.terminal_bloom_strength)),
+      SIZE = math.max(1, math.min(30, config.terminal_bloom_size)),
+    })
+  end
+  -- The trail moves on its own: Ghostty draws it only while animating.
+  if config.terminal_trail then
+    lines[#lines + 1] = "custom-shader-animation = true"
+  end
+  if write_if_changed(include, table.concat(lines, "\n") .. "\n") then
+    changed = true
+  end
+  if any and not included then
+    -- Appended: written through, so a link (dotfiles) stays a link.
+    local f = io.open(ghostty_dir .. "/config", "a")
+    if f then
+      f:write((main:sub(-1) == "\n" and "" or "\n")
+        .. "\n# Effects (cursor trail, bloom) from the Window Style plugin: SUPER + CTRL + ALT + S, Terminal tab.\n"
+        .. "config-file = ?window-style\n")
+      f:close()
+      changed = true
+    end
+  end
+  if changed then
+    hl.exec_cmd("pkill -USR2 -x ghostty")
+  end
+end
+
 -- One change from the panel: applied at once, then saved. `option` nil-valued
 -- (`value` nil) takes it out, back to all windows' (or Omarchy's).
 local function set(kind, option, v)
@@ -1154,8 +1271,7 @@ local function set(kind, option, v)
       return
     end
     config[kind][option] = v
-  elseif option == nil and (kind == "shadow_look" or kind == "shadow_size" or kind == "shadow_opacity"
-      or kind == "shadow_unfocused" or kind == "open_as") then
+  elseif option == nil and is_global[kind] then
     if type(v) ~= type(defaults[kind]) or (kind == "open_as" and not OPEN_AS[v]) then
       return
     end
@@ -1163,6 +1279,8 @@ local function set(kind, option, v)
     -- Only that changes: the rest stays as it is.
     if kind == "open_as" then
       apply_open_as()
+    elseif kind:sub(1, 9) == "terminal_" then
+      guard("the terminal effects", apply_terminal)()
     else
       apply_shadow()
     end
@@ -1175,8 +1293,17 @@ local function set(kind, option, v)
   save()
 end
 
--- A kind (or everything, for "everything") back to as if nothing were set.
+-- A kind (or everything, for "everything"; "terminal" for the terminal
+-- effects) back to as if nothing were set.
 local function reset(kind)
+  if kind == "terminal" then
+    for _, k in ipairs(TERMINAL) do
+      config[k] = defaults[k]
+    end
+    guard("the terminal effects", apply_terminal)()
+    save()
+    return
+  end
   if kind == "everything" then
     for _, k in ipairs(KINDS) do
       config[k] = {}
@@ -1190,6 +1317,9 @@ local function reset(kind)
     return
   end
   apply()
+  if kind == "everything" then
+    guard("the terminal effects", apply_terminal)()
+  end
   save()
 end
 
@@ -1280,7 +1410,7 @@ local function open(tab, index)
     '{"monitor":%s,"tab":%s,"index":%d,"kinds":{%s},"present":{%s},"palettes":{%s},"unfocused":{%s},'
       .. '"themes":[%s],"current_theme":%s,"sidebar":%s,"agent":%s,'
       .. '"omarchy":{"border_size":%d,"rounding":%d,"gaps":%d,"gaps_out":%d,"height":%s},"shadow":{"look":%s,"size":%s,"opacity":%s,"unfocused":%s,'
-      .. '"open_as":%s}}',
+      .. '"open_as":%s,"terminal_trail":%s,"terminal_bloom":%s,"terminal_bloom_strength":%s,"terminal_bloom_size":%s}}',
     json_string(m and m.name or ""), json_string(tab or "all"), tonumber(index) or 0, table.concat(kinds, ","),
     table.concat(present, ","), table.concat(palettes, ","), table.concat(unfocused, ","),
     table.concat(themes, ","), json_string(current_name),
@@ -1291,7 +1421,8 @@ local function open(tab, index)
     (type(agent_sidebar) == "table" and agent_sidebar.open_as) and ('{"open_as":' .. json(agent_sidebar.open_as()) .. "}") or "null",
     omarchy_border_size, omarchy_rounding, omarchy_gaps, omarchy_gaps_out, json(OMARCHY_HEIGHT),
     json(config.shadow_look), json(config.shadow_size), json(config.shadow_opacity),
-    json(config.shadow_unfocused), json(config.open_as))
+    json(config.shadow_unfocused), json(config.open_as), json(config.terminal_trail), json(config.terminal_bloom),
+    json(config.terminal_bloom_strength), json(config.terminal_bloom_size))
   hl.exec_cmd("omarchy-shell -q window-style-panel open " .. quote(payload))
 end
 
@@ -1318,6 +1449,7 @@ window_style = {
 -- Sidebars and pinned windows already styled before this loaded get these
 -- looks once the others have loaded too.
 guard("applying the window style", apply)()
+guard("the terminal effects", apply_terminal)()
 hl.timer(guard("restyling sidebars and pinned windows", function()
   if type(sidebar) == "table" and sidebar.retheme then
     sidebar.retheme()

@@ -42,6 +42,7 @@ Scope {
     if (present.sidebars) list.push({ kind: "sidebars", label: "Sidebars" })
     // The Dock plugin's windows (the kind is "pinned"; Omarchy's pop-outs are pinned too).
     if (present.pinned) list.push({ kind: "pinned", label: "Docked" })
+    list.push({ kind: "terminal", label: "Terminal" })
     list.push({ kind: "menus", label: "Menus" })
     list.push({ kind: "bar", label: "Bar" })
     return list
@@ -104,12 +105,25 @@ Scope {
     { key: "gaps", label: "Gaps between windows", hint: "Omarchy's scratchpad has none; unset: as other workspaces", type: "number", min: 0, max: 40, step: 1, unit: "px" },
     { key: "gaps_out", label: "Gaps to screen edges", hint: "Top and sides; Omarchy's scratchpad is flush; unset: as other workspaces", type: "number", min: 0, max: 60, step: 1, unit: "px" }
   ])
+  // Terminal: Ghostty's effects (custom shaders), for every Ghostty window.
+  readonly property var terminalRows: [
+    { key: "terminal_trail", label: "Cursor trail", hint: "Ghostty: a fading streak follows the cursor when it jumps, like Kitty's", type: "bool", global: true },
+    { key: "terminal_bloom", label: "Bloom", hint: "Ghostty: text and the cursor glow softly", type: "bool", global: true },
+    { key: "terminal_bloom_strength", label: "Bloom strength", hint: "How strong the glow is; subtle is about 35%", type: "number", min: 0.05, max: 1, step: 0.05, unit: "%", global: true, needs: "terminal_bloom" },
+    { key: "terminal_bloom_size", label: "Bloom size", hint: "How far the glow reaches; larger costs more GPU", type: "number", min: 2, max: 20, step: 1, unit: "px", global: true, needs: "terminal_bloom" }
+  ]
+  readonly property var terminalDefaults: ({ terminal_trail: false, terminal_bloom: false, terminal_bloom_strength: 0.35, terminal_bloom_size: 6 })
+  function terminalSet() {
+    for (var k in terminalDefaults) if (shadow[k] !== undefined && shadow[k] !== terminalDefaults[k]) return true
+    return false
+  }
   // On All windows: how the Agent Sidebar plugin's windows open, saved through it.
   readonly property var agentRows: [
     { key: "open_as", label: "Agent opens as", hint: "Super + A and new sessions (Agent Sidebar plugin)", type: "enum",
       options: ["sidebar", "tiled", "floating", "popped", "docked"], agent: true }
   ]
   readonly property var rows: tab === "all" ? options.concat(shadowRows).concat(openRows).concat(agentOptions !== null ? agentRows : []) : tab === "menus" ? menuRows : tab === "bar" ? barRows
+    : tab === "terminal" ? terminalRows
     : tab === "scratchpad" ? scratchpadRows
     : tab === "sidebars" && sidebarOptions !== null ? options.concat(sidebarRows) : options
   readonly property int count: rows.length + 1 // and the reset row
@@ -121,8 +135,10 @@ Scope {
       for (var o in k) if (k[o] !== null && k[o] !== undefined) return true
       return false
     }
+    if (tab === "terminal") return terminalSet()
     if (tab !== "all") return set(tab)
     for (var kind in kinds) if (set(kind)) return true
+    if (terminalSet()) return true
     return shadow.look !== undefined && (shadow.look !== "glow" || shadow.size !== 6 || shadow.opacity !== 0.2 || shadow.unfocused === false
       || (shadow.open_as !== undefined && shadow.open_as !== "tiled"))
   }
@@ -174,6 +190,7 @@ Scope {
     if (row.global) {
       var g = { shadow_look: shadow.look, shadow_size: shadow.size, shadow_opacity: shadow.opacity, shadow_unfocused: shadow.unfocused,
                 open_as: shadow.open_as }[row.key]
+      if (row.key.indexOf("terminal_") === 0) g = shadow[row.key]
       return { value: g, from: "own" }
     }
     // A row another kind's value shows (a menus' rounding: tiled windows').
@@ -197,7 +214,7 @@ Scope {
   }
 
   function enabled(row) {
-    return !row.needs || lookup({ key: row.needs }).value !== false
+    return !row.needs || lookup({ key: row.needs, global: row.global }).value !== false
   }
 
   function themeLabel(slug) {
@@ -275,7 +292,7 @@ Scope {
   function store(key, v, global) {
     if (global) {
       var s = Object.assign({}, shadow)
-      s[{ shadow_look: "look", shadow_size: "size", shadow_opacity: "opacity", shadow_unfocused: "unfocused",
+      s[key.indexOf("terminal_") === 0 ? key : { shadow_look: "look", shadow_size: "size", shadow_opacity: "opacity", shadow_unfocused: "unfocused",
           open_as: "open_as" }[key]] = v
       shadow = s
     } else {
@@ -361,7 +378,9 @@ Scope {
     var k = Object.assign({}, kinds)
     if (tab === "all") {
       for (var name in k) k[name] = {}
-      shadow = { look: "glow", size: 6, opacity: 0.2, unfocused: true, open_as: "tiled" }
+      shadow = Object.assign({ look: "glow", size: 6, opacity: 0.2, unfocused: true, open_as: "tiled" }, terminalDefaults)
+    } else if (tab === "terminal") {
+      shadow = Object.assign({}, shadow, terminalDefaults)
     } else {
       k[tab] = {}
     }
@@ -649,7 +668,8 @@ Scope {
             anchors.leftMargin: Style.space(14)
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: !root.resettable ? (root.tab === "all" ? "Nothing to reset: Omarchy's look" : "Nothing to reset: " + root.parentLook + " look")
+            text: root.tab === "terminal" ? (!root.resettable ? "Nothing to reset: no effects" : root.confirming ? "Press again to turn every effect off" : "Turn every effect off")
+              : !root.resettable ? (root.tab === "all" ? "Nothing to reset: Omarchy's look" : "Nothing to reset: " + root.parentLook + " look")
                 : root.confirming ? "Press again to reset " + (root.tab === "all" ? "every tab" : "this tab")
                                   : (root.tab === "all" ? "Reset everything to Omarchy's look" : "Reset this tab to " + root.parentLook)
             color: parent.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
