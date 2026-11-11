@@ -117,7 +117,7 @@ return {
   shadow_size = 6,
   shadow_opacity = 0.2,
   shadow_unfocused = false,            -- only the focused window has a shadow
-  open_as = "floating",                -- or "tiled", "popped" (Super + O's), "docked" (Dock plugin)
+  open_as = "workspace",               -- or "tiled", "floating", "popped" (Super + O's), "docked" (Dock plugin)
   terminal_trail = true,               -- Ghostty: cursor trail
   terminal_bloom = true,               -- Ghostty: bloom
   terminal_bloom_strength = 0.35,      -- 0 to 1
@@ -125,7 +125,9 @@ return {
 }
 ```
 
-`open_as` is how new windows open: tiled (Omarchy's way), floating (centred,
+`open_as` is how new windows open: as their workspace's layout says
+("workspace": Omarchy's Super + L, so a floating workspace floats them and a
+tiled or scrolling one tiles them), tiled (Omarchy's way), floating (centred,
 at their own size; Super + T tiles one), popped out as Super + O does, or
 docked to a screen edge (needs the [Dock plugin](https://github.com/motorstreak/omarchy-dock)).
 Dialogs float either way, and only windows opening tiled on a regular

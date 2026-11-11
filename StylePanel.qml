@@ -70,8 +70,8 @@ Scope {
   ]
   // On All windows: how new windows open (every window but dialogs and the agent's).
   readonly property var openRows: [
-    { key: "open_as", label: "Open new windows as", hint: "Floating: centred, Super + T tiles one; popped: as Super + O; docked: Dock plugin", type: "enum",
-      options: ["tiled", "floating", "popped", "docked"], global: true }
+    { key: "open_as", label: "Open new windows as", hint: "Workspace: as its layout says (Super + L); floating: centred, Super + T tiles one; popped: as Super + O; docked: Dock plugin", type: "enum",
+      options: ["workspace", "tiled", "floating", "popped", "docked"], global: true }
   ]
   // Menus (Omarchy's shell draws them): the border, and how solid their
   // background is. Their rounding is shown, not set: the shell has one

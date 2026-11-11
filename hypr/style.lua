@@ -124,7 +124,9 @@ local defaults = {
   shadow_unfocused = true, -- false: only the focused window has one
   -- How new windows open: "tiled", "floating" (centred, at their own size;
   -- SUPER + T tiles one), "popped" (as SUPER + O pops one out) or "docked"
-  -- (the Dock plugin). Dialogs float either way; the Agent Sidebar plugin's
+  -- (the Dock plugin), or "workspace": as the workspace's own layout says
+  -- (Omarchy's SUPER + L: floating on a floating workspace, tiled on the
+  -- rest). Dialogs float either way; the Agent Sidebar plugin's
   -- windows open as its own open_as says.
   open_as = "tiled",
   -- Ghostty's effects (custom shaders): a cursor trail like Kitty's, and a
@@ -134,7 +136,7 @@ local defaults = {
   terminal_bloom_strength = 0.35,
   terminal_bloom_size = 6,
 }
-local OPEN_AS = { tiled = true, floating = true, popped = true, docked = true }
+local OPEN_AS = { tiled = true, floating = true, popped = true, docked = true, workspace = true }
 
 local config = { all = {}, tiled = {}, floating = {}, popped = {}, scratchpad = {}, sidebars = {}, pinned = {}, menus = {}, bar = {} }
 for k, v in pairs(defaults) do
@@ -194,7 +196,7 @@ do
     config.shadow_look = "glow"
   end
   if not OPEN_AS[config.open_as] then
-    problems[#problems + 1] = 'open_as must be "tiled", "floating", "popped" or "docked"'
+    problems[#problems + 1] = 'open_as must be "tiled", "floating", "popped", "docked" or "workspace"'
     config.open_as = "tiled"
   end
   if #problems > 0 then
@@ -679,7 +681,8 @@ hl.on("window.open", guard("opening a new window", function(window)
   if window.floating then
     fit_soon(address)
   end
-  if mode == "tiled" or window.floating or window.pinned or ws == "" or ws:sub(1, 8) == "special:" then
+  -- "workspace": Omarchy's workspace modes float or tile it (SUPER + L).
+  if mode == "tiled" or mode == "workspace" or window.floating or window.pinned or ws == "" or ws:sub(1, 8) == "special:" then
     return
   end
   -- Floating, but another rule tiled it (Omarchy's browser rule tiles Chrome
