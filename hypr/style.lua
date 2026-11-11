@@ -810,8 +810,17 @@ local function apply_scratchpad(active, inactive)
   end
 end
 
+-- Pinned windows (docked, popped out with SUPER + O) have no titlebar. On a
+-- floating workspace Omarchy gives every window one (its hyprbars plugin), drawn
+-- above the window, so a window placed just under the bar had its titlebar
+-- over the bar. Their plugins place them and their own looks set them apart.
+local function apply_titlebars()
+  pcall(rule, "window-style-pinned-no-titlebar", { match = { pin = true }, ["hyprbars:no_bar"] = true })
+end
+
 local function apply()
   apply_open_as()
+  apply_titlebars()
   -- Tiled: Hyprland's own settings, Omarchy's where nothing is set.
   local width = border_width("tiled")
   local active, inactive = border_colours("tiled")
