@@ -136,6 +136,28 @@ Sidebar plugin's windows open as its own `open_as` says. The panel shows it on
 All windows as "Open new windows as". The old `open_floating = true` still
 reads as `open_as = "floating"`.
 
+### Mode keys
+
+With `mode_keys = true`, one set of keys sets a window's mode, and each key
+only ever puts a window *into* its mode (pressing it again does nothing):
+
+| Key | Does |
+|---|---|
+| `key_mode` (Super + T) | the workspace between tiled and floating (Omarchy's layouts; Super + L still cycles in scrolling); on a popped, docked or drawer window: back to its workspace's mode |
+| `key_pop` (Super + O) | pops the window out (your `pop-window` if you have one, else Omarchy's) |
+| `key_dock` (Super + Alt + P) | docks it to the screen edge (Dock plugin) |
+| `key_drawer` (Super + Alt + B) | makes it a drawer (Sidebar plugin) |
+
+From one of those modes to another, the window leaves the first and enters
+the second. On the scratchpad, `key_mode` floats or tiles just that window.
+The Sidebar plugin (0.41.0 and later) leaves Super + T alone while this is on.
+
+```lua
+mode_keys = true,
+key_dock = "SUPER + P",
+key_drawer = "SUPER + SHIFT + D",
+```
+
 A floating window that opens bigger than its screen's visible area (the screen
 less the bar, Omarchy's outer gap and the border) is shrunk to fit and
 centred, whatever `open_as` says. Apps that remember a size from a bigger

@@ -99,6 +99,7 @@ local OPTIONS = {
 local KINDS = { "all", "tiled", "floating", "popped", "scratchpad", "sidebars", "pinned", "menus", "bar" }
 -- The options for every window at once.
 local GLOBALS = { "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused", "open_as",
+  "mode_keys", "key_mode", "key_pop", "key_dock", "key_drawer",
   "terminal_trail", "terminal_bloom", "terminal_bloom_strength", "terminal_bloom_size" }
 local TERMINAL = { "terminal_trail", "terminal_bloom", "terminal_bloom_strength", "terminal_bloom_size" }
 local is_global = {}
@@ -129,6 +130,16 @@ local defaults = {
   -- rest). Dialogs float either way; the Agent Sidebar plugin's
   -- windows open as its own open_as says.
   open_as = "tiled",
+  -- One set of keys for a window's mode. key_mode switches the workspace
+  -- between tiled and floating, or brings a popped, docked or drawer window
+  -- back to it; key_pop / key_dock / key_drawer put the window in that mode
+  -- (from any other), and do nothing when it's in it already. Off: Omarchy's,
+  -- the Dock's and the Sidebar's own keys, each a toggle.
+  mode_keys = false,
+  key_mode = "SUPER + T",
+  key_pop = "SUPER + O",
+  key_dock = "SUPER + ALT + P", -- the Dock plugin's
+  key_drawer = "SUPER + ALT + B", -- the Sidebar plugin's (its convert)
   -- Ghostty's effects (custom shaders): a cursor trail like Kitty's, and a
   -- soft bloom around text (its strength 0 to 1, its reach in pixels).
   terminal_trail = false,
@@ -1496,6 +1507,182 @@ local function open(tab, index)
   hl.exec_cmd("omarchy-shell -q window-style-panel open " .. quote(payload))
 end
 
+-- Mode keys -------------------------------------------------------------------------
+
+-- A window's mode: "drawer" (in a sidebar), "popped" (SUPER + O), "docked"
+-- (pinned otherwise: the Dock plugin's), or "workspace" (as its workspace is).
+local function mode_of(w)
+  if is_sidebar(w) then
+    return "drawer"
+  elseif w.pinned and is_popped(w) then
+    return "popped"
+  elseif w.pinned then
+    return "docked"
+  end
+  return "workspace"
+end
+
+-- The user's own pop-out (dotfiles) when there is one, else Omarchy's (which
+-- toggles floating: a floating window would be tiled). Hyprland's own PATH may
+-- lack ~/.local/bin, so that's looked in too.
+local function pop()
+  hl.exec_cmd([[p=$(command -v pop-window || ls "$HOME/.local/bin/pop-window" 2>/dev/null) ]]
+    .. [[&& exec "$p" || exec omarchy-hyprland-window-pop]])
+end
+
+local function dock_toggle()
+  if type(dock) == "table" and dock.toggle then
+    dock.toggle()
+  else
+    notify("Docking needs the Dock plugin: https://github.com/motorstreak/omarchy-dock")
+  end
+end
+
+local function drawer_toggle()
+  if type(sidebar) == "table" and sidebar.convert then
+    sidebar.convert()
+  else
+    notify("The drawer needs the Sidebar plugin: https://github.com/motorstreak/omarchy-sidebar")
+  end
+end
+
+-- Out of a drawer: to the workspace on its screen (the Sidebar plugin lets go
+-- of it as it leaves; its own convert key may only make drawers).
+local function leave_drawer()
+  local w = hl.get_active_window()
+  local regular = w and w.monitor and w.monitor.active_workspace
+  if regular == nil then
+    return
+  end
+  local target = tonumber(regular.name) and regular.name or ("name:" .. regular.name)
+  hl.dispatch(hl.dsp.window.move({ workspace = target, window = "address:" .. w.address }))
+end
+
+-- Each acts on the focused window: into its mode, and out of it.
+local TOGGLE = { popped = pop, docked = dock_toggle, drawer = drawer_toggle }
+local LEAVE = { popped = pop, docked = dock_toggle, drawer = leave_drawer }
+
+-- Whether a regular workspace floats: Omarchy's saved mode for it (SUPER + L),
+-- or its default one.
+local function read_mode(path)
+  local f = io.open(path, "r")
+  if f == nil then
+    return nil
+  end
+  local text = f:read("*a")
+  f:close()
+  return text:match('mode%s*=%s*"(%a+)"') or text:match('default%s*=%s*"(%a+)"')
+end
+local function workspace_floats(name)
+  local dir = state_home .. "/omarchy/workspace-layouts/"
+  local mode = read_mode(dir .. tostring(name) .. ".lua") or read_mode(dir .. "default.lua")
+  return mode == "floating"
+end
+
+-- Back in its workspace (once out of its mode has settled): floating or tiled
+-- as the workspace is. Popping back in returns a window to what it was before,
+-- and undocking leaves it floating, either of which may not be the workspace's.
+local function settle(address)
+  hl.timer(guard("putting the window back", function()
+    local w = hl.get_window(address)
+    if w == nil or mode_of(w) ~= "workspace" then
+      return
+    end
+    local ws = w.workspace and w.workspace.name or ""
+    if not tonumber(ws) or (w.fullscreen or 0) ~= 0 then
+      return
+    end
+    local floats = workspace_floats(ws)
+    if floats ~= w.floating then
+      hl.dispatch(hl.dsp.window.float({ action = floats and "enable" or "disable", window = address }))
+    end
+    if floats then
+      fit_soon(address)
+    end
+  end), { timeout = 400, type = "oneshot" })
+end
+
+-- The window into `mode`: out of the one it's in first, then (once that has
+-- settled, focused again) in.
+local function enter(mode)
+  local w = hl.get_active_window()
+  if w == nil then
+    return
+  end
+  local now = mode_of(w)
+  if now == mode then
+    return
+  end
+  if now == "workspace" then
+    TOGGLE[mode]()
+    return
+  end
+  local address = "address:" .. w.address
+  LEAVE[now]()
+  hl.timer(guard("changing the window's mode", function()
+    local again = hl.get_window(address)
+    if again == nil or mode_of(again) == mode then
+      return
+    end
+    hl.dispatch(hl.dsp.focus({ window = address }))
+    hl.timer(guard("changing the window's mode", function()
+      local active = hl.get_active_window()
+      if active and active.address == again.address and mode_of(active) ~= mode then
+        TOGGLE[mode]()
+      end
+    end), { timeout = 50, type = "oneshot" })
+  end), { timeout = 400, type = "oneshot" })
+end
+
+-- key_mode: a popped, docked or drawer window back to its workspace's mode;
+-- otherwise the workspace between tiled and floating (Omarchy's layouts, as
+-- SUPER + L cycles them: scrolling counts as tiled). On a special workspace
+-- (the scratchpad), just this window, as Omarchy's SUPER + T.
+local function mode_key()
+  local w = hl.get_active_window()
+  local now = w and mode_of(w) or "workspace"
+  if now ~= "workspace" then
+    LEAVE[now]()
+    settle("address:" .. w.address)
+    return
+  end
+  local ws = w and w.workspace and w.workspace.name or (hl.get_active_workspace() or {}).name or ""
+  if ws:sub(1, 8) == "special:" or not tonumber(ws) then
+    if w then
+      hl.dispatch(hl.dsp.window.float({ action = "toggle" }))
+    end
+    return
+  end
+  hl.exec_cmd([[case "$(omarchy-hyprland-workspace-layout-current)" in
+    dwindle) omarchy-hyprland-workspace-layout-toggle back ;;
+    *) omarchy-hyprland-workspace-layout-toggle ;;
+  esac]])
+end
+
+local bound_keys = {}
+local function bind_mode_keys()
+  for _, k in ipairs(bound_keys) do
+    hl.unbind(k)
+  end
+  bound_keys = {}
+  if not config.mode_keys then
+    return
+  end
+  local keys = {
+    { config.key_mode, "Workspace tiled / floating, or the window back to it", mode_key },
+    { config.key_pop, "Pop the window out", function() enter("popped") end },
+    { config.key_dock, "Dock the window to the screen edge", function() enter("docked") end },
+    { config.key_drawer, "Make the window a drawer", function() enter("drawer") end },
+  }
+  for _, k in ipairs(keys) do
+    if type(k[1]) == "string" and k[1] ~= "" then
+      hl.unbind(k[1])
+      o.bind(k[1], k[2], guard(k[2]:lower(), k[3]))
+      bound_keys[#bound_keys + 1] = k[1]
+    end
+  end
+end
+
 local PANEL_KEY = "SUPER + CTRL + ALT + S"
 hl.unbind(PANEL_KEY)
 o.bind(PANEL_KEY, "Window style", guard("opening the window style", function()
@@ -1514,7 +1701,19 @@ window_style = {
   open = open,
   apply = apply,
   write_menus = write_menus,
+  -- The Sidebar plugin leaves SUPER + T alone while this is on.
+  mode_keys = function()
+    return config.mode_keys == true
+  end,
+  -- The mode keys' actions: enter("popped" | "docked" | "drawer"), mode_key().
+  enter = enter,
+  mode_key = mode_key,
 }
+
+-- The mode keys, now and once everything else has loaded (the Dock, the
+-- Sidebar and the user's own bindings bind some of the same keys).
+guard("binding the mode keys", bind_mode_keys)()
+hl.timer(guard("binding the mode keys", bind_mode_keys), { timeout = 100, type = "oneshot" })
 
 -- Sidebars and pinned windows already styled before this loaded get these
 -- looks once the others have loaded too.
