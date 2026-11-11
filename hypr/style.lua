@@ -621,6 +621,41 @@ local function agent_mode(window)
   return mine and agent_sidebar.open_as() or nil
 end
 
+-- On a floating workspace Omarchy gives floating windows a titlebar (its
+-- hyprbars plugin, not on pinned ones here), drawn above the window. A window
+-- placed just under the bar while it had none (popped out, docked) gets it back
+-- once unpinned, over the bar: so it's moved down until the titlebar clears it.
+local function titlebar_height(w)
+  if w.pinned or not w.floating then
+    return 0
+  end
+  local on = false
+  for _, tag in ipairs(w.tags or {}) do
+    if tag:gsub("%*$", "") == "omarchy-floating-workspace" then
+      on = true
+    end
+  end
+  if not on then
+    return 0
+  end
+  local ok, h = pcall(hl.get_config, "plugin:hyprbars:bar_height")
+  return (ok and tonumber(h)) or 0
+end
+
+local function clear_bar(w)
+  local bar = titlebar_height(w)
+  local m = w.monitor
+  if bar <= 0 or m == nil or w.at == nil or (w.fullscreen or 0) ~= 0 then
+    return
+  end
+  local r = m.reserved or {}
+  local border = border_width("floating") or omarchy_border_size
+  local top = m.y + (r.top or 0) + omarchy_gaps_out + border + bar
+  if w.at.y < top then
+    hl.dispatch(hl.dsp.window.move({ x = w.at.x, y = top, window = "address:" .. w.address }))
+  end
+end
+
 -- A floating window bigger than its screen's visible area (the screen less the
 -- bar and other reserved edges, Omarchy's outer gap and the border) is shrunk
 -- to fit and centred. Apps that remember their size from a bigger or unscaled
@@ -642,13 +677,21 @@ local function fit_to_screen(address)
   local r = m.reserved or {}
   local edge = omarchy_gaps_out
   local border = border_width("floating") or omarchy_border_size
+  local bar = titlebar_height(w)
   local max_w = math.floor(m.width / m.scale - (r.left or 0) - (r.right or 0) - 2 * (edge + border))
-  local max_h = math.floor(m.height / m.scale - (r.top or 0) - (r.bottom or 0) - 2 * (edge + border))
+  local max_h = math.floor(m.height / m.scale - (r.top or 0) - (r.bottom or 0) - 2 * (edge + border) - bar)
   if max_w <= 0 or max_h <= 0 or (w.size.x <= max_w and w.size.y <= max_h) then
+    clear_bar(w)
     return
   end
   hl.dispatch(hl.dsp.window.resize({ x = math.min(w.size.x, max_w), y = math.min(w.size.y, max_h), window = address }))
   hl.dispatch(hl.dsp.window.center({ window = address }))
+  hl.timer(guard("keeping a titlebar under the bar", function()
+    local again = hl.get_window(address)
+    if again then
+      clear_bar(again)
+    end
+  end), { timeout = 50, type = "oneshot" })
 end
 
 -- Checked as it opens and again a moment later: some apps (Chrome) only set
@@ -659,6 +702,21 @@ local function fit_soon(address)
     fit_to_screen(address)
   end), { timeout = 300, type = "oneshot" })
 end
+
+-- Unpinned (popped back in, undocked): fitted again, titlebar and all, once
+-- the pop-out or the Dock has finished with it.
+hl.on("window.pin", guard("fitting an unpinned window", function(window)
+  if window == nil or window.address == nil then
+    return
+  end
+  local address = "address:" .. window.address
+  hl.timer(guard("fitting an unpinned window", function()
+    local w = hl.get_window(address)
+    if w and not w.pinned and w.floating then
+      fit_to_screen(address)
+    end
+  end), { timeout = 150, type = "oneshot" })
+end))
 
 -- A new window, once open. An agent's the floating rule caught but its plugin
 -- wants tiled: tiled again. Otherwise, opened tiled on a regular workspace
