@@ -883,7 +883,13 @@ end
 -- floating workspace Omarchy gives every window one (its hyprbars plugin), drawn
 -- above the window, so a window placed just under the bar had its titlebar
 -- over the bar. Their plugins place them and their own looks set them apart.
+-- Without hyprbars loaded (as on a machine without it) Hyprland rejects the
+-- field and fails the whole load, even inside pcall: so only when it's there.
 local function apply_titlebars()
+  local ok, h = pcall(hl.get_config, "plugin:hyprbars:bar_height")
+  if not ok or h == nil then
+    return
+  end
   pcall(rule, "window-style-pinned-no-titlebar", { match = { pin = true }, ["hyprbars:no_bar"] = true })
 end
 
