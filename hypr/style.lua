@@ -477,6 +477,7 @@ local OMARCHY_OPACITY_TAG = (function()
   end
   return source:find("default-opacity", 1, true) and "default-opacity" or nil
 end)()
+local SOLID_VIDEO = "(^.+-youtube\\.com__.*$|^.+-app\\.zoom\\.us__wc_home.*$)"
 local function opacity_match(match)
   match.tag = OMARCHY_OPACITY_TAG
   return match
@@ -964,6 +965,11 @@ local function apply()
     rule("window-style-floating-opacity", { match = opacity_match({ float = true }), opacity = o_floating })
   else
     no_rule("window-style-floating-opacity", opacity_match({ float = true }))
+  end
+  -- Older Omarchy kept video windows (YouTube and Zoom web apps) solid by
+  -- dropping their tag; without the tag, a later rule does the same.
+  if OMARCHY_OPACITY_TAG == nil then
+    rule("window-style-solid-video", { match = { class = SOLID_VIDEO }, opacity = "1 1" })
   end
 
   -- Popped out: rules on Omarchy's "pop" tag for what differs from floating
