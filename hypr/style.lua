@@ -968,7 +968,21 @@ local function apply()
   end
   -- Older Omarchy kept video windows (YouTube and Zoom web apps) solid by
   -- dropping their tag; without the tag, a later rule does the same.
+  -- Browsers likewise were solid while focused; unfocused they follow the
+  -- setting for their kind. Made before the video rule, which wins.
   if OMARCHY_OPACITY_TAG == nil then
+    for _, browser in ipairs({ "chromium-based-browser", "firefox-based-browser" }) do
+      for kind, float in pairs({ tiled = false, floating = true }) do
+        local name = "window-style-solid-" .. browser .. "-" .. kind
+        local match = { tag = browser, float = float }
+        local o = opacity_of(kind)
+        if o then
+          rule(name, { match = match, opacity = "1 " .. o:match("%S+$") })
+        else
+          no_rule(name, match)
+        end
+      end
+    end
     rule("window-style-solid-video", { match = { class = SOLID_VIDEO }, opacity = "1 1" })
   end
 
