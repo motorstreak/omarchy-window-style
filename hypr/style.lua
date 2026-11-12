@@ -464,9 +464,24 @@ local function no_rule(name, match)
   hl.window_rule({ name = name, enabled = false, match = match })
 end
 
--- Omarchy makes windows slightly see-through with a rule on the windows tagged
--- "default-opacity" (apps that should stay solid drop the tag): so this does
--- the same, for the same windows.
+-- Older Omarchy made windows slightly see-through with a rule on the windows
+-- tagged "default-opacity" (apps that should stay solid drop the tag): there
+-- this does the same, for the same windows. Omarchy 4.5 dropped that tag (only
+-- a few apps opt in to see-through, tagged "transparent-window"), so there it
+-- reaches every window, as the panel's "All windows" says.
+local OMARCHY_OPACITY_TAG = (function()
+  local f = io.open("/usr/share/omarchy/default/hypr/windows.lua")
+  local source = f and f:read("a") or ""
+  if f then
+    f:close()
+  end
+  return source:find("default-opacity", 1, true) and "default-opacity" or nil
+end)()
+local function opacity_match(match)
+  match.tag = OMARCHY_OPACITY_TAG
+  return match
+end
+
 local function opacity_of(kind)
   local a, i = value(kind, "opacity"), value(kind, "opacity_unfocused")
   if a == nil and i == nil then
@@ -871,11 +886,11 @@ local function apply_scratchpad(active, inactive)
     no_rule("window-style-scratchpad", SCRATCHPAD)
   end
   local opacity = opacity_of("scratchpad")
-  local opacity_match = { tag = "default-opacity", workspace = SCRATCHPAD.workspace }
+  local scratch_match = opacity_match({ workspace = SCRATCHPAD.workspace })
   if opacity and (differs_scratchpad("opacity") or differs_scratchpad("opacity_unfocused")) then
-    rule("window-style-scratchpad-opacity", { match = opacity_match, opacity = opacity })
+    rule("window-style-scratchpad-opacity", { match = scratch_match, opacity = opacity })
   else
-    no_rule("window-style-scratchpad-opacity", opacity_match)
+    no_rule("window-style-scratchpad-opacity", scratch_match)
   end
 end
 
@@ -916,9 +931,9 @@ local function apply()
   end
   local o_tiled = opacity_of("tiled")
   if o_tiled then
-    rule("window-style-tiled-opacity", { match = { tag = "default-opacity", float = false }, opacity = o_tiled })
+    rule("window-style-tiled-opacity", { match = opacity_match({ float = false }), opacity = o_tiled })
   else
-    no_rule("window-style-tiled-opacity", { tag = "default-opacity", float = false })
+    no_rule("window-style-tiled-opacity", opacity_match({ float = false }))
   end
 
   -- Floating: a rule for what differs from tiled.
@@ -946,9 +961,9 @@ local function apply()
   -- windows (sidebars too) to Omarchy's own opacity rule.
   local o_floating = opacity_of("floating")
   if o_floating then
-    rule("window-style-floating-opacity", { match = { tag = "default-opacity", float = true }, opacity = o_floating })
+    rule("window-style-floating-opacity", { match = opacity_match({ float = true }), opacity = o_floating })
   else
-    no_rule("window-style-floating-opacity", { tag = "default-opacity", float = true })
+    no_rule("window-style-floating-opacity", opacity_match({ float = true }))
   end
 
   -- Popped out: rules on Omarchy's "pop" tag for what differs from floating
