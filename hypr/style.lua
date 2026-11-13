@@ -106,6 +106,14 @@ local is_global = {}
 for _, k in ipairs(GLOBALS) do
   is_global[k] = true
 end
+-- The globals that are part of a look (the rest is behaviour: how windows
+-- open, the keys), so each theme remembers its own.
+local LOOK_GLOBALS = { "shadow_look", "shadow_size", "shadow_opacity", "shadow_unfocused",
+  "terminal_trail", "terminal_bloom", "terminal_bloom_strength", "terminal_bloom_size" }
+local is_look_global = {}
+for _, k in ipairs(LOOK_GLOBALS) do
+  is_look_global[k] = true
+end
 
 local defaults = {
   all = {},
@@ -149,6 +157,7 @@ local defaults = {
 }
 local OPEN_AS = { tiled = true, floating = true, popped = true, docked = true, workspace = true }
 
+local raw_themes
 local config = { all = {}, tiled = {}, floating = {}, popped = {}, scratchpad = {}, sidebars = {}, pinned = {}, menus = {}, bar = {} }
 for k, v in pairs(defaults) do
   if type(v) ~= "table" then
@@ -172,6 +181,9 @@ do
   elseif load_err and not load_err:find("No such file", 1, true) then
     problems[#problems + 1] = load_err
   end
+  -- Each theme's own look (see "Looks per theme" below), read after the rest.
+  raw_themes = overrides.themes
+  overrides.themes = nil
   -- Before 0.14.0: open_floating = true (or false), now open_as.
   if overrides.open_floating ~= nil then
     if overrides.open_as == nil and type(overrides.open_floating) == "boolean" then
@@ -229,6 +241,103 @@ do
     config.bar.border_opacity = number("border-alpha")
     config.bar.border_size = number("border-width")
     config.bar.rounding = number("island-radius")
+  end
+end
+
+-- Looks per theme -------------------------------------------------------------------
+--
+-- A look is every kind's options and the look globals (shadows, terminal
+-- effects). The file's own is the shared look; `themes` holds the looks of the
+-- themes changed in the panel while in use, by folder name. A theme without
+-- one uses the shared look; the first change made while it's in use copies
+-- the look it had into it, so from then on it is its own (and a theme switch
+-- reloads Hyprland, which loads this again with the new theme's).
+local function look_of(src)
+  local look = {}
+  for _, kind in ipairs(KINDS) do
+    look[kind] = {}
+    for option, v in pairs(src[kind] or {}) do
+      look[kind][option] = v
+    end
+  end
+  for _, k in ipairs(LOOK_GLOBALS) do
+    look[k] = src[k]
+  end
+  return look
+end
+local function use_look(look)
+  for _, kind in ipairs(KINDS) do
+    config[kind] = {}
+    for option, v in pairs(look[kind] or {}) do
+      config[kind][option] = v
+    end
+  end
+  for _, k in ipairs(LOOK_GLOBALS) do
+    if look[k] == nil then
+      config[k] = defaults[k]
+    else
+      config[k] = look[k]
+    end
+  end
+end
+
+local shared_look = look_of(config)
+local current_theme = ""
+do
+  local f = io.open(state_home .. "/omarchy/current/theme.name", "r")
+  if f then
+    current_theme = (f:read("l") or ""):match("^%s*(.-)%s*$")
+    f:close()
+  end
+end
+local theme_looks = {}
+do
+  local problems = {}
+  if raw_themes ~= nil and type(raw_themes) ~= "table" then
+    problems[#problems + 1] = "themes must be a table"
+  elseif raw_themes then
+    for name, t in pairs(raw_themes) do
+      if type(name) ~= "string" or type(t) ~= "table" then
+        problems[#problems + 1] = "themes." .. tostring(name) .. " must be a table"
+      else
+        local look = look_of({})
+        for k, v in pairs(t) do
+          local where = "themes." .. name .. "." .. tostring(k)
+          if look[k] ~= nil and type(look[k]) == "table" then
+            if type(v) ~= "table" then
+              problems[#problems + 1] = where .. " must be a table"
+            else
+              for option, value in pairs(v) do
+                if OPTIONS[option] == nil then
+                  problems[#problems + 1] = "unknown option " .. where .. "." .. tostring(option)
+                elseif type(value) ~= OPTIONS[option] then
+                  problems[#problems + 1] = where .. "." .. option .. " must be a " .. OPTIONS[option]
+                else
+                  look[k][option] = value
+                end
+              end
+            end
+          elseif is_global[k] and not is_look_global[k] then
+            problems[#problems + 1] = where .. " is the same for every theme: set it outside themes"
+          elseif not is_look_global[k] then
+            problems[#problems + 1] = "unknown option " .. where
+          elseif type(v) ~= type(defaults[k]) then
+            problems[#problems + 1] = where .. " must be a " .. type(defaults[k])
+          elseif k == "shadow_look" and v ~= "glow" and v ~= "shadow" then
+            problems[#problems + 1] = where .. ' must be "glow" or "shadow"'
+          else
+            look[k] = v
+          end
+        end
+        theme_looks[name] = look
+      end
+    end
+  end
+  if #problems > 0 then
+    notify("Problems in ~/.config/omarchy/window-style.lua: " .. table.concat(problems, "; "))
+  end
+  if theme_looks[current_theme] then
+    use_look(theme_looks[current_theme])
   end
 end
 
@@ -1244,32 +1353,68 @@ local function lua_value(v)
   end
   return tostring(v)
 end
-local function save()
-  local lines = {
-    "-- Window Style plugin: how windows look. Written by its settings panel",
-    "-- (SUPER + CTRL + ALT + S); edits here work too. `all` is every window; each",
-    "-- kind sets only what differs from it.",
-    "return {",
-  }
+-- A look's lines, at `indent`. The shared look always has its bar (even
+-- empty), or the next load would take shell.toml's [bar] (another theme's
+-- maybe) as its own.
+local function look_lines(lines, look, indent, keep_bar)
   for _, kind in ipairs(KINDS) do
     local set = {}
     for _, option in ipairs(ORDER) do
-      if config[kind][option] ~= nil then
-        set[#set + 1] = "    " .. option .. " = " .. lua_value(config[kind][option]) .. ","
+      if look[kind][option] ~= nil then
+        set[#set + 1] = indent .. "  " .. option .. " = " .. lua_value(look[kind][option]) .. ","
       end
     end
     if #set > 0 then
-      lines[#lines + 1] = "  " .. kind .. " = {"
+      lines[#lines + 1] = indent .. kind .. " = {"
       for _, l in ipairs(set) do
         lines[#lines + 1] = l
       end
-      lines[#lines + 1] = "  },"
+      lines[#lines + 1] = indent .. "},"
+    elseif kind == "bar" and keep_bar then
+      lines[#lines + 1] = indent .. "bar = {},"
     end
   end
+  for _, k in ipairs(LOOK_GLOBALS) do
+    if look[k] ~= nil and look[k] ~= defaults[k] then
+      lines[#lines + 1] = indent .. k .. " = " .. lua_value(look[k]) .. ","
+    end
+  end
+end
+-- `look_changed`: the look changed, so it's the current theme's from now on.
+local function save(look_changed)
+  if look_changed then
+    if current_theme ~= "" then
+      theme_looks[current_theme] = look_of(config)
+    else
+      shared_look = look_of(config)
+    end
+  end
+  local lines = {
+    "-- Window Style plugin: how windows look. Written by its settings panel",
+    "-- (SUPER + CTRL + ALT + S); edits here work too. `all` is every window; each",
+    "-- kind sets only what differs from it. This is the look shared by every",
+    "-- theme; `themes` has the looks of themes changed in the panel while in use.",
+    "return {",
+  }
+  look_lines(lines, shared_look, "  ", true)
   for _, k in ipairs(GLOBALS) do
-    if config[k] ~= defaults[k] then
+    if not is_look_global[k] and config[k] ~= defaults[k] then
       lines[#lines + 1] = "  " .. k .. " = " .. lua_value(config[k]) .. ","
     end
+  end
+  local names = {}
+  for name in pairs(theme_looks) do
+    names[#names + 1] = name
+  end
+  table.sort(names)
+  if #names > 0 then
+    lines[#lines + 1] = "  themes = {"
+    for _, name in ipairs(names) do
+      lines[#lines + 1] = "    [" .. string.format("%q", name) .. "] = {"
+      look_lines(lines, theme_looks[name], "      ", false)
+      lines[#lines + 1] = "    },"
+    end
+    lines[#lines + 1] = "  },"
   end
   lines[#lines + 1] = "}"
   -- Written through, so a link (dotfiles) stays a link.
@@ -1406,13 +1551,13 @@ local function set(kind, option, v)
     else
       apply_shadow()
     end
-    save()
+    save(is_look_global[kind])
     return
   else
     return
   end
   apply()
-  save()
+  save(true)
 end
 
 -- A kind (or everything, for "everything"; "terminal" for the terminal
@@ -1423,14 +1568,28 @@ local function reset(kind)
       config[k] = defaults[k]
     end
     guard("the terminal effects", apply_terminal)()
-    save()
+    save(true)
     return
   end
+  -- The current theme back to the shared look.
+  if kind == "theme" then
+    if theme_looks[current_theme] == nil then
+      return
+    end
+    theme_looks[current_theme] = nil
+    use_look(shared_look)
+    apply()
+    guard("the terminal effects", apply_terminal)()
+    save(false)
+    return
+  end
+  -- Everything of the look: how windows open and the keys are the same for
+  -- every theme, so they stay.
   if kind == "everything" then
     for _, k in ipairs(KINDS) do
       config[k] = {}
     end
-    for _, k in ipairs(GLOBALS) do
+    for _, k in ipairs(LOOK_GLOBALS) do
       config[k] = defaults[k]
     end
   elseif config[kind] ~= nil then
@@ -1442,7 +1601,7 @@ local function reset(kind)
   if kind == "everything" then
     guard("the terminal effects", apply_terminal)()
   end
-  save()
+  save(true)
 end
 
 -- The settings panel -----------------------------------------------------------------
@@ -1530,12 +1689,12 @@ local function open(tab, index)
   local m = hl.get_active_monitor()
   local payload = string.format(
     '{"monitor":%s,"tab":%s,"index":%d,"kinds":{%s},"present":{%s},"palettes":{%s},"unfocused":{%s},'
-      .. '"themes":[%s],"current_theme":%s,"sidebar":%s,"agent":%s,'
+      .. '"themes":[%s],"current_theme":%s,"theme_look":%s,"sidebar":%s,"agent":%s,'
       .. '"omarchy":{"border_size":%d,"rounding":%d,"gaps":%d,"gaps_out":%d,"height":%s},"shadow":{"look":%s,"size":%s,"opacity":%s,"unfocused":%s,'
       .. '"open_as":%s,"terminal_trail":%s,"terminal_bloom":%s,"terminal_bloom_strength":%s,"terminal_bloom_size":%s}}',
     json_string(m and m.name or ""), json_string(tab or "all"), tonumber(index) or 0, table.concat(kinds, ","),
     table.concat(present, ","), table.concat(palettes, ","), table.concat(unfocused, ","),
-    table.concat(themes, ","), json_string(current_name),
+    table.concat(themes, ","), json_string(current_name), tostring(theme_looks[current_theme] ~= nil),
     -- The Sidebar plugin's own look options (dim behind, margin), on the
     -- Sidebars tab.
     (type(sidebar) == "table" and sidebar.style_options) and sidebar.style_options() or "null",

@@ -43,6 +43,14 @@ Sidebars tab).
   from Floating are marked "· floating", and on Scratchpad, those from Tiled
   "· tiled". Changing one sets it for that
   kind; `Backspace` hands it back.
+- **Looks per theme**: each Omarchy theme remembers its own look. The line
+  under the title says whose look you're changing. A theme you haven't
+  changed uses the look all themes share; your first change while it's in use
+  gives it its own (a copy of the shared look with that change), saved for
+  that theme only. Switching theme switches look. On All windows, "Use the
+  shared look" (`Enter` twice) forgets the theme's own look. How new windows
+  open and the mode keys are behaviour, not look: they're the same for every
+  theme.
 - **Theme**, at the top of each tab: the Omarchy theme that kind takes its
   colours from. The first choice, "Omarchy's", follows the theme Omarchy is
   using (and changes with it); it's what a tab has until you pick another. A sidebar given a theme of its
@@ -122,8 +130,18 @@ return {
   terminal_bloom = true,               -- Ghostty: bloom
   terminal_bloom_strength = 0.35,      -- 0 to 1
   terminal_bloom_size = 6,             -- pixels
+  themes = {                           -- looks of themes changed in the panel, by folder name
+    ["tokyo-night"] = {
+      all = { rounding = 12, opacity_unfocused = 0.7 },
+      shadow_look = "shadow",
+    },
+  },
 }
 ```
+
+Everything outside `themes` but `open_as` and the mode keys is the shared
+look. A theme in `themes` has a whole look of its own (kinds, shadows,
+terminal effects); it doesn't take anything from the shared one.
 
 `open_as` is how new windows open: as their workspace's layout says
 ("workspace": Omarchy's Super + L, so a floating workspace floats them and a

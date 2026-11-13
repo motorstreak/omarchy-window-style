@@ -11,7 +11,9 @@ import qs.Ui
 // their plugins are installed). A kind's tab shows its own values, and the
 // ones it takes from all windows dimmed; changing one sets it for that kind,
 // Backspace hands it back. Each change is applied at once and saved by
-// hypr/style.lua (window_style.set).
+// hypr/style.lua (window_style.set). Looks are remembered per theme: a change
+// is saved as the current theme's own look (how windows open stays the same
+// for every theme), and "Use the shared look" forgets it.
 Scope {
   id: root
 
@@ -23,6 +25,8 @@ Scope {
   property var unfocusedHex: ({}) // kind -> its theme's own unfocused border colour
   property var themes: [] // [{ slug, label }]
   property string currentTheme: ""
+  property bool themeLook: false // the current theme has its own look
+  property bool confirmingShared: false
   readonly property var colours: palettes[tab] || []
   property var omarchy: ({})
   property var shadow: ({}) // { look, size, opacity, unfocused, open_as }: the options for every window
@@ -122,7 +126,11 @@ Scope {
     { key: "open_as", label: "Agent opens as", hint: "Super + A and new sessions (Agent Sidebar plugin)", type: "enum",
       options: ["sidebar", "tiled", "floating", "popped", "docked"], agent: true }
   ]
-  readonly property var rows: tab === "all" ? options.concat(shadowRows).concat(openRows).concat(agentOptions !== null ? agentRows : []) : tab === "menus" ? menuRows : tab === "bar" ? barRows
+  // On All windows, once the theme has its own look: back to the shared one.
+  readonly property var sharedRows: themeLook && currentTheme !== "" ? [
+    { key: "_shared", label: "Use the shared look", hint: "Forget " + themeLabel(currentTheme) + "'s own look and use the one all themes share", type: "action" }
+  ] : []
+  readonly property var rows: tab === "all" ? options.concat(shadowRows).concat(openRows).concat(agentOptions !== null ? agentRows : []).concat(sharedRows) : tab === "menus" ? menuRows : tab === "bar" ? barRows
     : tab === "terminal" ? terminalRows
     : tab === "scratchpad" ? scratchpadRows
     : tab === "sidebars" && sidebarOptions !== null ? options.concat(sidebarRows) : options
@@ -139,8 +147,8 @@ Scope {
     if (tab !== "all") return set(tab)
     for (var kind in kinds) if (set(kind)) return true
     if (terminalSet()) return true
-    return shadow.look !== undefined && (shadow.look !== "glow" || shadow.size !== 6 || shadow.opacity !== 0.2 || shadow.unfocused === false
-      || (shadow.open_as !== undefined && shadow.open_as !== "tiled"))
+    // How windows open isn't part of the look: the reset leaves it.
+    return shadow.look !== undefined && (shadow.look !== "glow" || shadow.size !== 6 || shadow.opacity !== 0.2 || shadow.unfocused === false)
   }
   // The last row ↓ reaches: the reset row only when it can do something.
   readonly property int lastIndex: resettable ? rows.length : rows.length - 1
@@ -154,6 +162,8 @@ Scope {
     unfocusedHex = p.unfocused || {}
     themes = Array.isArray(p.themes) ? p.themes : []
     currentTheme = String(p.current_theme || "")
+    themeLook = p.theme_look === true
+    confirmingShared = false
     omarchy = p.omarchy || {}
     shadow = p.shadow || {}
     sidebarOptions = p.sidebar && typeof p.sidebar === "object" ? p.sidebar : null
@@ -185,6 +195,7 @@ Scope {
   // popped-out window's, unless set), "tiled" (the scratchpad's), "all" or
   // "omarchy".
   function lookup(row) {
+    if (row.action) return { value: null, from: "own" }
     if (row.sidebar) return { value: sidebarOptions[row.key], from: "own" }
     if (row.agent) return { value: agentOptions[row.key], from: "own" }
     if (row.global) {
@@ -239,6 +250,7 @@ Scope {
   }
 
   function shown(row) {
+    if (row.type === "action") return confirmingShared ? "Press again" : ""
     var l = lookup(row), v = l.value, text
     if (row.type === "bool") text = v === true ? "On" : "Off"
     else if (row.type === "enum") text = String(v)
@@ -302,6 +314,8 @@ Scope {
       kinds = k
     }
     send(key, v, global)
+    // A look change: from now on the theme's own (how windows open isn't one).
+    if (key !== "open_as") themeLook = true
     // Another theme: its colours to pick from (the panel opens again with them).
     if (key === "theme") refresh.restart()
   }
@@ -325,6 +339,18 @@ Scope {
   }
 
   function change(row, step) {
+    if (row.type === "action") {
+      if (!confirmingShared) { confirmingShared = true; return }
+      confirmingShared = false
+      // After anything still waiting; then the panel opens again with the
+      // shared look's values.
+      var q = Object.assign({}, queued)
+      q["shared"] = "window_style.reset('theme'); window_style.open('all', " + index + ")"
+      queued = q
+      queuedOrder = queuedOrder.filter(function(id) { return id !== "shared" }).concat(["shared"])
+      if (!sender.running) flush()
+      return
+    }
     if (!enabled(row) || row.follows) return
     var v = lookup(row).value
     if (row.type === "bool") {
@@ -370,7 +396,7 @@ Scope {
 
   // Back to all windows' value (or Omarchy's, on All windows).
   function clear(row) {
-    if (row.global || row.follows || row.sidebar || row.agent || lookup(row).from !== "own") return
+    if (row.action || row.global || row.follows || row.sidebar || row.agent || lookup(row).from !== "own") return
     store(row.key, null, false)
   }
 
@@ -378,13 +404,14 @@ Scope {
     var k = Object.assign({}, kinds)
     if (tab === "all") {
       for (var name in k) k[name] = {}
-      shadow = Object.assign({ look: "glow", size: 6, opacity: 0.2, unfocused: true, open_as: "tiled" }, terminalDefaults)
+      shadow = Object.assign({ look: "glow", size: 6, opacity: 0.2, unfocused: true, open_as: shadow.open_as }, terminalDefaults)
     } else if (tab === "terminal") {
       shadow = Object.assign({}, shadow, terminalDefaults)
     } else {
       k[tab] = {}
     }
     kinds = k
+    themeLook = currentTheme !== ""
     index = rows.length - 1
     // After anything still waiting, which the reset then undoes.
     var q = Object.assign({}, queued)
@@ -413,6 +440,7 @@ Scope {
     tab = tabs[(i + step + tabs.length) % tabs.length].kind
     index = Math.min(index, lastIndex)
     confirming = false
+    confirmingShared = false
   }
 
   IpcHandler {
@@ -480,6 +508,7 @@ Scope {
         Keys.onPressed: function(event) {
           if (event.key === Qt.Key_Escape) {
             if (root.confirming) root.confirming = false
+            else if (root.confirmingShared) root.confirmingShared = false
             else root.open = false
           } else if (event.key === Qt.Key_Tab) {
             root.switchTab(1)
@@ -488,8 +517,10 @@ Scope {
           } else if (event.key === Qt.Key_Up) {
             root.index = Math.max(0, root.index - 1)
             root.confirming = false
+            root.confirmingShared = false
           } else if (event.key === Qt.Key_Down) {
             root.index = Math.min(root.lastIndex, root.index + 1)
+            root.confirmingShared = false
           } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
             // Only changes a value: the reset row takes Enter, Space or a
             // click, so arrows held past the last row reset nothing.
@@ -523,6 +554,21 @@ Scope {
           opacity: 0.58
           font.family: Style.font.menuFamily
           font.pixelSize: Style.font.heading
+        }
+
+        // Whose look this is: changes are saved for the theme in use.
+        Text {
+          visible: root.currentTheme !== ""
+          width: parent.width
+          bottomPadding: Style.space(6)
+          textFormat: Text.PlainText
+          text: root.themeLook ? root.themeLabel(root.currentTheme) + "'s own look. Changes are saved for " + root.themeLabel(root.currentTheme) + " only."
+                               : "The look all themes share. Your first change gives " + root.themeLabel(root.currentTheme) + " its own look."
+          color: Commons.Color.menu.text
+          opacity: 0.52
+          font.family: Style.font.menuFamily
+          font.pixelSize: Style.font.bodySmall
+          elide: Text.ElideRight
         }
 
         // The tabs: Tab / Shift + Tab, or a click.
@@ -635,7 +681,7 @@ Scope {
               anchors.rightMargin: Style.space(14)
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: { root.kinds; root.shadow; root.tab; var arrows = row.modelData.type !== "bool" && !row.modelData.follows; return (arrows ? "‹  " : "") + root.shown(row.modelData) + (arrows ? "  ›" : "") }
+              text: { root.kinds; root.shadow; root.tab; root.confirmingShared; var arrows = row.modelData.type !== "bool" && row.modelData.type !== "action" && !row.modelData.follows; return (arrows ? "‹  " : "") + root.shown(row.modelData) + (arrows ? "  ›" : "") }
               color: row.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
               // Inherited: dimmed.
               opacity: row.source.from === "own" ? 1 : 0.5
