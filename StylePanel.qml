@@ -34,6 +34,31 @@ Scope {
   property var agentOptions: null // the Agent Sidebar plugin's { open_as }
   property var sidebarPending: ({}) // changed, to be saved
   property string tab: "all"
+
+  // The Island Bar plugin, and whether it is the bar in use (shell.json's
+  // bar.id). Its on/off row switches bars with `omarchy bar use`.
+  property bool islandBarInstalled: false
+  property string barId: ""
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/plugins/island-bar/manifest.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.islandBarInstalled = true
+    onLoadFailed: root.islandBarInstalled = false
+    onFileChanged: reload()
+  }
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/shell.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: {
+      try {
+        var config = JSON.parse(text())
+        root.barId = config && config.bar && config.bar.id ? String(config.bar.id) : ""
+      } catch (e) {}
+    }
+    onFileChanged: reload()
+  }
   // Whose look a tab's unset rows take: popped-out windows take floating ones',
   // the scratchpad's tiled ones'.
   readonly property string parentLook: tab === "popped" ? "floating windows'" : tab === "scratchpad" ? "tiled windows'" : "all windows'"
@@ -93,13 +118,16 @@ Scope {
   ]
   // The bar: Omarchy's bar's background, and the Island Bar plugin's islands
   // (their border and corners). Unset rows take nothing from All windows.
-  readonly property var barRows: options.filter(function(r) { return menuKeys.indexOf(r.key) >= 0 }).map(function(r) {
+  readonly property var islandRows: islandBarInstalled ? [
+    { key: "_islands", label: "Islands", hint: "Island Bar plugin: each section on its own floating island; off: Omarchy's full-width bar", type: "bool", islands: true }
+  ] : []
+  readonly property var barRows: islandRows.concat(options.filter(function(r) { return menuKeys.indexOf(r.key) >= 0 }).map(function(r) {
     // Turned on without a width, the border is 1 px.
     return r.key === "border_size" ? Object.assign({}, r, { unset: "1 px" }) : r
   }).concat([
     { key: "background_opacity", label: "Background opacity", hint: "The bar, or its islands; 0 is clear", type: "number", min: 0, max: 1, step: 0.05, unit: "%" },
     { key: "rounding", label: "Island rounding", hint: "The islands' corner radius (Island Bar plugin)", type: "number", min: 0, max: 30, step: 1, unit: "px", unset: "fully round" }
-  ])
+  ]))
   // On Scratchpad: its windows' rounding is tiled windows' (Hyprland rounds
   // tiled windows as one), and the space between them.
   readonly property var scratchpadRows: options.map(function(r) {
@@ -196,6 +224,7 @@ Scope {
   // "omarchy".
   function lookup(row) {
     if (row.action) return { value: null, from: "own" }
+    if (row.islands) return { value: barId === "island-bar", from: "own" }
     if (row.sidebar) return { value: sidebarOptions[row.key], from: "own" }
     if (row.agent) return { value: agentOptions[row.key], from: "own" }
     if (row.global) {
@@ -373,6 +402,11 @@ Scope {
       else v = Math.min(row.max, Math.max(row.min, Math.round((v + step * row.step) / row.step) * row.step))
       v = Math.round(v * 1000) / 1000
     }
+    if (row.islands) {
+      barId = v ? "island-bar" : "omarchy.bar"
+      Quickshell.execDetached(["omarchy", "bar", "use", barId])
+      return
+    }
     if (row.agent) {
       var ag = Object.assign({}, agentOptions)
       ag[row.key] = v
@@ -396,7 +430,7 @@ Scope {
 
   // Back to all windows' value (or Omarchy's, on All windows).
   function clear(row) {
-    if (row.action || row.global || row.follows || row.sidebar || row.agent || lookup(row).from !== "own") return
+    if (row.action || row.islands || row.global || row.follows || row.sidebar || row.agent || lookup(row).from !== "own") return
     store(row.key, null, false)
   }
 
