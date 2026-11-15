@@ -245,7 +245,10 @@ Scope {
       var ti = (kinds.tiled || {})[row.key]
       if (ti !== null && ti !== undefined) return { value: ti, from: "tiled" }
     }
-    if (kind === "bar" && row.key !== "theme") return { value: row.key === "border" ? false : undefined, from: "omarchy" }
+    // Unset, the bar's border is off, and its colour the theme's accent (as
+    // the shell draws the islands' border).
+    if (kind === "bar" && row.key !== "theme")
+      return { value: row.key === "border" ? false : row.key === "border_colour" ? "accent" : undefined, from: "omarchy" }
     if (kind !== "all") {
       var all = (kinds.all || {})[row.key]
       if (all !== null && all !== undefined) return { value: all, from: "all" }
@@ -283,7 +286,7 @@ Scope {
     var l = lookup(row), v = l.value, text
     if (row.type === "bool") text = v === true ? "On" : "Off"
     else if (row.type === "enum") text = String(v)
-    else if (row.type === "colour") { var c = colourOf(v); text = c ? c.label : String(v) }
+    else if (row.type === "colour") { var c = colourOf(v); text = c ? c.label : v ? String(v) : "theme's" }
     else if (row.type === "theme") text = v === "current" ? "Omarchy's (" + themeLabel(currentTheme) + ")" : themeLabel(v)
     else if (typeof v !== "number" && row.unset) text = row.unset
     else if (typeof v !== "number") text = row.key.indexOf("opacity") === 0 || row.key === "background_opacity" ? "Omarchy's" : "theme's"
