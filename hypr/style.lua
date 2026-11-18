@@ -1571,18 +1571,6 @@ local function reset(kind)
     save(true)
     return
   end
-  -- The current theme back to the shared look.
-  if kind == "theme" then
-    if theme_looks[current_theme] == nil then
-      return
-    end
-    theme_looks[current_theme] = nil
-    use_look(shared_look)
-    apply()
-    guard("the terminal effects", apply_terminal)()
-    save(false)
-    return
-  end
   -- Everything of the look: how windows open and the keys are the same for
   -- every theme, so they stay.
   if kind == "everything" then
@@ -1604,42 +1592,12 @@ local function reset(kind)
   save(true)
 end
 
--- Every other kind of window takes this kind's look. Only windows: All windows'
--- own values stay, as menus take theirs from them, and so do the scratchpad's
--- height and gaps. A kind keeps inheriting where that already gives the look.
-local function spread(kind)
-  local WINDOWS = { "tiled", "floating", "popped", "scratchpad", "sidebars", "pinned" }
-  local LOOK = { "theme", "border", "border_size", "border_colour", "border_colour_unfocused", "border_opacity",
-    "border_opacity_unfocused", "rounding", "shadow", "opacity", "opacity_unfocused" }
-  local known = false
-  for _, k in ipairs(WINDOWS) do
-    known = known or k == kind
-  end
-  if not known then
-    return
-  end
-  local target = {}
-  for _, option in ipairs(LOOK) do
-    target[option] = value(kind, option)
-  end
-  -- The scratchpad's rounding is always tiled windows'.
-  if kind == "scratchpad" then
-    target.rounding = value("tiled", "rounding")
-  end
-  -- In this order: popped-out windows inherit from floating, the scratchpad
-  -- from tiled.
-  for _, other in ipairs(WINDOWS) do
-    if other ~= kind then
-      for _, option in ipairs(LOOK) do
-        config[other][option] = nil
-        if value(other, option) ~= target[option] then
-          config[other][option] = target[option]
-        end
-      end
-    end
-  end
-  apply()
-  save(true)
+-- Every theme takes the look in use: it becomes the shared look, and the looks
+-- themes had of their own are gone. What's on screen doesn't change.
+local function share_look()
+  shared_look = look_of(config)
+  theme_looks = {}
+  save(false)
 end
 
 -- The settings panel -----------------------------------------------------------------
@@ -1724,15 +1682,19 @@ local function open(tab, index)
     '"sidebars":' .. tostring(type(sidebar) == "table"),
     '"pinned":' .. tostring(type(dock) == "table"),
   }
+  local other_looks = false
+  for name in pairs(theme_looks) do
+    other_looks = other_looks or name ~= current_theme
+  end
   local m = hl.get_active_monitor()
   local payload = string.format(
     '{"monitor":%s,"tab":%s,"index":%d,"kinds":{%s},"present":{%s},"palettes":{%s},"unfocused":{%s},'
-      .. '"themes":[%s],"current_theme":%s,"theme_look":%s,"sidebar":%s,"agent":%s,'
+      .. '"themes":[%s],"current_theme":%s,"theme_look":%s,"other_theme_looks":%s,"sidebar":%s,"agent":%s,'
       .. '"omarchy":{"border_size":%d,"rounding":%d,"gaps":%d,"gaps_out":%d,"height":%s},"shadow":{"look":%s,"size":%s,"opacity":%s,"unfocused":%s,'
       .. '"open_as":%s,"terminal_trail":%s,"terminal_bloom":%s,"terminal_bloom_strength":%s,"terminal_bloom_size":%s}}',
     json_string(m and m.name or ""), json_string(tab or "all"), tonumber(index) or 0, table.concat(kinds, ","),
     table.concat(present, ","), table.concat(palettes, ","), table.concat(unfocused, ","),
-    table.concat(themes, ","), json_string(current_name), tostring(theme_looks[current_theme] ~= nil),
+    table.concat(themes, ","), json_string(current_name), tostring(theme_looks[current_theme] ~= nil), tostring(other_looks),
     -- The Sidebar plugin's own look options (dim behind, margin), on the
     -- Sidebars tab.
     (type(sidebar) == "table" and sidebar.style_options) and sidebar.style_options() or "null",
@@ -1936,7 +1898,7 @@ window_style = {
   config = config,
   set = set,
   reset = reset,
-  spread = spread,
+  share_look = share_look,
   open = open,
   apply = apply,
   write_menus = write_menus,
