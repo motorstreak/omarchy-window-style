@@ -1604,6 +1604,44 @@ local function reset(kind)
   save(true)
 end
 
+-- Every other kind of window takes this kind's look. Only windows: All windows'
+-- own values stay, as menus take theirs from them, and so do the scratchpad's
+-- height and gaps. A kind keeps inheriting where that already gives the look.
+local function spread(kind)
+  local WINDOWS = { "tiled", "floating", "popped", "scratchpad", "sidebars", "pinned" }
+  local LOOK = { "theme", "border", "border_size", "border_colour", "border_colour_unfocused", "border_opacity",
+    "border_opacity_unfocused", "rounding", "shadow", "opacity", "opacity_unfocused" }
+  local known = false
+  for _, k in ipairs(WINDOWS) do
+    known = known or k == kind
+  end
+  if not known then
+    return
+  end
+  local target = {}
+  for _, option in ipairs(LOOK) do
+    target[option] = value(kind, option)
+  end
+  -- The scratchpad's rounding is always tiled windows'.
+  if kind == "scratchpad" then
+    target.rounding = value("tiled", "rounding")
+  end
+  -- In this order: popped-out windows inherit from floating, the scratchpad
+  -- from tiled.
+  for _, other in ipairs(WINDOWS) do
+    if other ~= kind then
+      for _, option in ipairs(LOOK) do
+        config[other][option] = nil
+        if value(other, option) ~= target[option] then
+          config[other][option] = target[option]
+        end
+      end
+    end
+  end
+  apply()
+  save(true)
+end
+
 -- The settings panel -----------------------------------------------------------------
 
 local function json_string(v)
@@ -1898,6 +1936,7 @@ window_style = {
   config = config,
   set = set,
   reset = reset,
+  spread = spread,
   open = open,
   apply = apply,
   write_menus = write_menus,

@@ -64,14 +64,20 @@ Sidebars tab).
   dims while a sidebar shows) and **Margin** (its gap to the screen edges and
   the bar). They're the Sidebar plugin's own options, which its settings
   (`Super + Alt + S`) then leave to this panel: shown at once and saved into
-  `~/.config/omarchy/sidebar.lua`; the tab's reset leaves them.
+  `~/.config/omarchy/sidebar.lua`; the tab's last row leaves them.
 - The Scratchpad tab also has **Height** (how much of the screen it drops
   down over, 30% to 100%; Omarchy's is 50%), **Gaps between windows** and
   **Gaps to screen edges** (unset: as on other workspaces). Its rounding is always Tiled's: Hyprland rounds tiled windows
   as one.
-- The bottom row resets the tab (on All windows: everything, back to Omarchy's
-  look): `Enter` (or a click) twice; the arrows never reset. It's greyed out,
-  and skipped, when the tab has nothing set.
+- On a tab of windows (Tiled, Floating, Popped out, Scratchpad, Sidebars,
+  Docked) the bottom row is **Set all other windows to this style**: every other
+  kind of window takes this tab's look, for the theme in use. All windows' own
+  values, menus, the bar and the scratchpad's height and gaps stay as they are.
+  It's greyed out, and skipped, when the others already match.
+- On All windows, Terminal, Menus and Bar the bottom row resets the tab (on All
+  windows: everything, back to Omarchy's look). It's greyed out, and skipped,
+  when the tab has nothing set.
+- Either way it takes `Enter` (or a click) twice; the arrows never trigger it.
 
 The **Menus** tab styles Omarchy's own menus, launcher, popups and
 notifications: theme, border, its colour, width and opacity, and how solid

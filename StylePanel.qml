@@ -163,9 +163,35 @@ Scope {
     : tab === "scratchpad" ? scratchpadRows
     : tab === "sidebars" && sidebarOptions !== null ? options.concat(sidebarRows) : options
   readonly property int count: rows.length + 1 // and the reset row
-  // Whether the reset row has anything to do: an option set on this tab (on
-  // All windows: on any tab, or the shadow look changed).
+  // The tabs of windows: their last row gives every other window their look.
+  readonly property var windowTabs: ["tiled", "floating", "popped", "scratchpad", "sidebars", "pinned"]
+  readonly property bool spreads: windowTabs.indexOf(tab) >= 0
+  // A kind's value for a look option, inherited as hypr/style.lua's value().
+  function effective(kind, key) {
+    if (kind === "scratchpad" && key === "rounding") return effective("tiled", key)
+    var own = (kinds[kind] || {})[key]
+    if (own !== null && own !== undefined) return own
+    if (kind === "popped") return effective("floating", key)
+    if (kind === "scratchpad") return effective("tiled", key)
+    if (kind === "all") return null
+    return effective("all", key)
+  }
+  // Whether any other kind of window looks different from this tab's.
+  function othersDiffer() {
+    for (var i = 0; i < windowTabs.length; i++) {
+      var other = windowTabs[i]
+      if (other === tab || ((other === "sidebars" || other === "pinned") && !present[other])) continue
+      for (var j = 0; j < options.length; j++) {
+        if (effective(other, options[j].key) !== effective(tab, options[j].key)) return true
+      }
+    }
+    return false
+  }
+  // Whether the last row has anything to do: on a window's tab, another window
+  // looks different; else an option set on this tab (on All windows: on any
+  // tab, or the shadow look changed).
   readonly property bool resettable: {
+    if (spreads) return othersDiffer()
     function set(kind) {
       var k = kinds[kind] || {}
       for (var o in k) if (k[o] !== null && k[o] !== undefined) return true
@@ -459,11 +485,24 @@ Scope {
     confirming = false
   }
 
+  // Every other kind of window takes this tab's look; the panel then opens
+  // again with their new values.
+  function spread() {
+    index = rows.length - 1
+    var q = Object.assign({}, queued)
+    q["spread"] = "window_style.spread('" + tab + "'); window_style.open('" + tab + "', " + index + ")"
+    queued = q
+    queuedOrder = queuedOrder.filter(function(id) { return id !== "spread" }).concat(["spread"])
+    if (!sender.running) flush()
+    confirming = false
+  }
+
   function activate(step) {
     if (index >= rows.length) {
       if (!resettable) return
-      if (confirming) reset()
-      else confirming = true
+      if (!confirming) confirming = true
+      else if (spreads) spread()
+      else reset()
     } else {
       change(rows[index], step)
     }
@@ -743,7 +782,7 @@ Scope {
           height: Math.max(Style.space(40), Style.font.body + Style.spacing.rowPaddingX * 2)
           radius: Style.cornerRadius
           color: current ? Commons.Color.menu.selectedBackground : "transparent"
-          // Nothing set here: nothing to reset.
+          // Nothing to do here.
           opacity: root.resettable ? 1 : 0.35
 
           Text {
@@ -751,7 +790,8 @@ Scope {
             anchors.leftMargin: Style.space(14)
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: root.tab === "terminal" ? (!root.resettable ? "Nothing to reset: no effects" : root.confirming ? "Press again to turn every effect off" : "Turn every effect off")
+            text: root.spreads ? (!root.resettable ? "All other windows already have this style" : root.confirming ? "Press again to set all other windows to this style" : "Set all other windows to this style")
+              : root.tab === "terminal" ? (!root.resettable ? "Nothing to reset: no effects" : root.confirming ? "Press again to turn every effect off" : "Turn every effect off")
               : !root.resettable ? (root.tab === "all" ? "Nothing to reset: Omarchy's look" : "Nothing to reset: " + root.parentLook + " look")
                 : root.confirming ? "Press again to reset " + (root.tab === "all" ? "every tab" : "this tab")
                                   : (root.tab === "all" ? "Reset everything to Omarchy's look" : "Reset this tab to " + root.parentLook)
@@ -776,7 +816,7 @@ Scope {
           topPadding: Style.space(8)
           textFormat: Text.PlainText
           text: root.tab === "terminal" ? "Tab next tab · ↑↓ choose · ←→ change · Enter on the last row · Esc close"
-              : "Tab next tab · ↑↓ choose · ←→ change · ⌫ back to " + (root.tab === "all" ? "Omarchy's" : root.parentLook) + " · Enter on reset · Esc close"
+              : "Tab next tab · ↑↓ choose · ←→ change · ⌫ back to " + (root.tab === "all" ? "Omarchy's" : root.parentLook) + (root.spreads ? " · Enter on the last row" : " · Enter on reset") + " · Esc close"
           color: Commons.Color.menu.text
           opacity: 0.45
           font.family: Style.font.menuFamily
