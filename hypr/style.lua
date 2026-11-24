@@ -144,8 +144,10 @@ local defaults = {
   -- (from any other), and do nothing when it's in it already. Off: Omarchy's,
   -- the Dock's and the Sidebar's own keys, each a toggle.
   mode_keys = false,
-  key_mode = "SUPER + T",
-  key_pop = "SUPER + O",
+  -- None of these is one of Omarchy's keys, so its SUPER + T and SUPER + O stay
+  -- as they are.
+  key_mode = "SUPER + SHIFT + ALT + T",
+  key_pop = "SUPER + ALT + O",
   key_dock = "SUPER + ALT + P", -- the Dock plugin's
   key_drawer = "SUPER + ALT + B", -- the Sidebar plugin's (its convert)
   -- Ghostty's effects (custom shaders): a cursor trail like Kitty's, and a
@@ -1902,9 +1904,10 @@ window_style = {
   open = open,
   apply = apply,
   write_menus = write_menus,
-  -- The Sidebar plugin leaves SUPER + T alone while this is on.
+  -- The Sidebar plugin leaves SUPER + T alone while this has it (key_mode set
+  -- to Omarchy's SUPER + T).
   mode_keys = function()
-    return config.mode_keys == true
+    return config.mode_keys == true and config.key_mode == "SUPER + T"
   end,
   -- The mode keys' actions: enter("popped" | "docked" | "drawer"), mode_key().
   enter = enter,

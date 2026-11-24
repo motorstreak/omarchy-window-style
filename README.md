@@ -162,19 +162,19 @@ only ever puts a window *into* its mode (pressing it again does nothing):
 
 | Key | Does |
 |---|---|
-| `key_mode` (Super + T) | the workspace between tiled and floating (Omarchy's layouts; Super + L still cycles in scrolling); on a popped, docked or drawer window: back to its workspace's mode |
-| `key_pop` (Super + O) | pops the window out (your `pop-window` if you have one, else Omarchy's) |
+| `key_mode` (Super + Shift + Alt + T) | the workspace between tiled and floating (Omarchy's layouts; Super + L still cycles in scrolling); on a popped, docked or drawer window: back to its workspace's mode |
+| `key_pop` (Super + Alt + O) | pops the window out (your `pop-window` if you have one, else Omarchy's) |
 | `key_dock` (Super + Alt + P) | docks it to the screen edge (Dock plugin) |
 | `key_drawer` (Super + Alt + B) | makes it a drawer (Sidebar plugin) |
 
 From one of those modes to another, the window leaves the first and enters
 the second. On the scratchpad, `key_mode` floats or tiles just that window.
-The Sidebar plugin (0.41.0 and later) leaves Super + T alone while this is on.
+None of the default keys is one of Omarchy's, so Omarchy's own Super + T and
+Super + O keep working. Set `key_mode = "SUPER + T"` to take that key over
+instead; the Sidebar plugin (0.41.0 and later) then leaves Super + T alone.
 
 ```lua
 mode_keys = true,
-key_dock = "SUPER + P",
-key_drawer = "SUPER + SHIFT + D",
 ```
 
 A floating window that opens bigger than its screen's visible area (the screen
