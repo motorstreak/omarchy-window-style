@@ -146,7 +146,7 @@ local defaults = {
   mode_keys = false,
   -- None of these is one of Omarchy's keys, so its SUPER + T and SUPER + O stay
   -- as they are.
-  key_mode = "SUPER + SHIFT + ALT + T",
+  key_mode = "SUPER + ALT + M",
   key_pop = "SUPER + ALT + O",
   key_dock = "SUPER + ALT + P", -- the Dock plugin's
   key_drawer = "SUPER + ALT + B", -- the Sidebar plugin's (its convert)
@@ -1393,7 +1393,7 @@ local function save(look_changed)
   end
   local lines = {
     "-- Window Style plugin: how windows look. Written by its settings panel",
-    "-- (SUPER + CTRL + ALT + S); edits here work too. `all` is every window; each",
+    "-- (SUPER + ALT + W); edits here work too. `all` is every window; each",
     "-- kind sets only what differs from it. This is the look shared by every",
     "-- theme; `themes` has the looks of themes changed in the panel while in use.",
     "return {",
@@ -1479,7 +1479,7 @@ local function apply_terminal()
     return
   end
   local changed = false
-  local lines = { "# Ghostty effects from the Window Style plugin (SUPER + CTRL + ALT + S, Terminal tab).",
+  local lines = { "# Ghostty effects from the Window Style plugin (SUPER + ALT + W, Terminal tab).",
     "# Written whole on every change there." }
   local function shader(name, values)
     local text = read_file(WINDOW_STYLE_DIR .. "/ghostty/" .. name .. ".glsl")
@@ -1521,7 +1521,7 @@ local function apply_terminal()
     local f = io.open(ghostty_dir .. "/config", "a")
     if f then
       f:write((main:sub(-1) == "\n" and "" or "\n")
-        .. "\n# Effects (cursor trail, bloom) from the Window Style plugin: SUPER + CTRL + ALT + S, Terminal tab.\n"
+        .. "\n# Effects (cursor trail, bloom) from the Window Style plugin: SUPER + ALT + W, Terminal tab.\n"
         .. "config-file = ?window-style\n")
       f:close()
       changed = true
@@ -1620,7 +1620,7 @@ local function json(v)
   return "null"
 end
 
--- SUPER + CTRL + ALT + S (or the Sidebar plugin's settings): StylePanel.qml with
+-- SUPER + ALT + W (or the Sidebar plugin's settings): StylePanel.qml with
 -- every kind's options as set (null: from all windows, or Omarchy's), and the
 -- theme's colours to pick from. `tab` opens it on that kind.
 local function open(tab, index)
@@ -1885,7 +1885,7 @@ local function bind_mode_keys()
   end
 end
 
-local PANEL_KEY = "SUPER + CTRL + ALT + S"
+local PANEL_KEY = "SUPER + ALT + W"
 hl.unbind(PANEL_KEY)
 o.bind(PANEL_KEY, "Window style", guard("opening the window style", function()
   open("all")

@@ -30,7 +30,7 @@ file, also run `omarchy restart shell`. Remove it with
 
 ## The panel
 
-`Super + Ctrl + Alt + S` opens it (and the Sidebar plugin's settings,
+`Super + Alt + W` opens it (and the Sidebar plugin's settings,
 `Super + Alt + S` in a sidebar, have a "Window style…" row that opens it on the
 Sidebars tab).
 
@@ -162,7 +162,7 @@ only ever puts a window *into* its mode (pressing it again does nothing):
 
 | Key | Does |
 |---|---|
-| `key_mode` (Super + Shift + Alt + T) | the workspace between tiled and floating (Omarchy's layouts; Super + L still cycles in scrolling); on a popped, docked or drawer window: back to its workspace's mode |
+| `key_mode` (Super + Alt + M) | the workspace between tiled and floating (Omarchy's layouts; Super + L still cycles in scrolling); on a popped, docked or drawer window: back to its workspace's mode |
 | `key_pop` (Super + Alt + O) | pops the window out (your `pop-window` if you have one, else Omarchy's) |
 | `key_dock` (Super + Alt + P) | docks it to the screen edge (Dock plugin) |
 | `key_drawer` (Super + Alt + B) | makes it a drawer (Sidebar plugin) |

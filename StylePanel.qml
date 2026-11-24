@@ -6,7 +6,7 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// The window style panel (SUPER + CTRL + ALT + S): a tab for all windows and
+// The window style panel (SUPER + ALT + W): a tab for all windows and
 // one for each kind (tiled, floating, popped out, the scratchpad, and sidebars and pinned windows when
 // their plugins are installed). A kind's tab shows its own values, and the
 // ones it takes from all windows dimmed; changing one sets it for that kind,
