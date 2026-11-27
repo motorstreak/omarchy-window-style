@@ -1030,12 +1030,72 @@ end
 -- over the bar. Their plugins place them and their own looks set them apart.
 -- Without hyprbars loaded (as on a machine without it) Hyprland rejects the
 -- field and fails the whole load, even inside pcall: so only when it's there.
+-- A titlebar the title can be read on. Omarchy colours it with the theme's
+-- lighter_background, or its selection colour when the theme has none; some
+-- themes' selection is pale (Catppuccin Mocha's rosewater), and the title is the
+-- light foreground, so it couldn't be read. Omarchy's choice stays where the
+-- title reads on it (contrast 4.5:1); otherwise the theme's own raised colours
+-- are tried, then a shade of its background mixed toward the text.
+local function luminance(hex)
+  local function channel(i)
+    local c = tonumber(hex:sub(i, i + 1), 16) / 255
+    return c <= 0.03928 and c / 12.92 or ((c + 0.055) / 1.055) ^ 2.4
+  end
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
+end
+local function contrast(a, b)
+  local la, lb = luminance(a), luminance(b)
+  if la < lb then
+    la, lb = lb, la
+  end
+  return (la + 0.05) / (lb + 0.05)
+end
+local function mix(a, b, t)
+  local out = ""
+  for i = 1, 5, 2 do
+    local x, y = tonumber(a:sub(i, i + 1), 16), tonumber(b:sub(i, i + 1), 16)
+    out = out .. string.format("%02x", math.floor(x + (y - x) * t + 0.5))
+  end
+  return out
+end
+local function titlebar_colour()
+  local bg = colour_in(theme_colors, "background")
+  local fg = colour_in(theme_colors, "foreground")
+  if bg == nil or fg == nil then
+    return nil
+  end
+  local omarchy = colour_in(theme_colors, "lighter_background")
+  if omarchy == nil or omarchy:lower() == bg:lower() then
+    omarchy = colour_in(theme_colors, "selection") or bg
+  end
+  -- Omarchy's choice wherever the title reads on it: only unreadable ones change.
+  if contrast(omarchy, fg) >= 4.5 then
+    return omarchy
+  end
+  for _, c in ipairs({ colour_in(theme_colors, "lighter_background"), colour_in(theme_colors, "color8") }) do
+    if c and c:lower() ~= bg:lower() and contrast(c, fg) >= 4.5 then
+      return c
+    end
+  end
+  for _, t in ipairs({ 0.12, 0.08, 0.04 }) do
+    local c = mix(bg, fg, t)
+    if contrast(c, fg) >= 4.5 then
+      return c
+    end
+  end
+  return bg
+end
+
 local function apply_titlebars()
   local ok, h = pcall(hl.get_config, "plugin:hyprbars:bar_height")
   if not ok or h == nil then
     return
   end
   pcall(rule, "window-style-pinned-no-titlebar", { match = { pin = true }, ["hyprbars:no_bar"] = true })
+  local bar = titlebar_colour()
+  if bar then
+    pcall(hl.config, { plugin = { hyprbars = { bar_color = "rgb(" .. bar .. ")", inactive_button_color = "rgb(" .. bar .. ")" } } })
+  end
 end
 
 local function apply()
