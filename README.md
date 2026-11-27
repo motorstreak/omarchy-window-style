@@ -120,6 +120,7 @@ return {
   floating = { rounding = 20 },        -- only what differs from all windows
   sidebars = { border_colour = "color2", border_opacity = 1 },
   pinned = { border = false, shadow = true },
+  tiled = { gaps = 8, gaps_out = 16 },  -- between tiled windows, and to the screen's edges
   scratchpad = { height = 0.75, gaps = 10 }, -- only what differs from tiled windows
   menus = { border_size = 3, background_opacity = 0.95 },
   shadow_look = "glow",                -- or "shadow"
@@ -189,9 +190,12 @@ Each kind (`all`, `tiled`, `floating`, `popped`, `scratchpad`, `sidebars`, `pinn
 `opacity`, `opacity_unfocused` (the window, 0.5 to 1; only windows Omarchy
 makes see-through, as apps that should stay solid opt out). `menus` also
 takes `background_opacity` (0 to 1), and ignores the window-only options
-(rounding, shadow, opacity). `scratchpad` also takes `height` (0.3 to 1, the
-share of the screen it covers), `gaps` (pixels between its windows) and
-`gaps_out` (to the screen's edges), and ignores `rounding`.
+(rounding, shadow, opacity). `all` and `tiled` also take `gaps` (pixels
+between tiled windows) and `gaps_out` (around them, to the screen's edges):
+Hyprland's own gaps, Omarchy's 5 and 10 where unset, and left alone while
+Omarchy's no-gaps toggle (`Super + Shift + Backspace`) is on. `scratchpad`
+also takes `height` (0.3 to 1, the share of the screen it covers) and its own
+`gaps` and `gaps_out` (otherwise tiled windows'), and ignores `rounding`.
 
 ## How it works
 

@@ -415,6 +415,24 @@ local function gap_of(option, fallback)
 end
 local omarchy_gaps = gap_of("general:gaps_in", 5)
 local omarchy_gaps_out = gap_of("general:gaps_out", 10)
+-- Omarchy's no-gaps toggle (SUPER + SHIFT + BACKSPACE) sets every gap to 0 and
+-- reloads; while it's on, the gaps are left to it.
+local function no_gaps_toggled()
+  local f = io.open(state_home .. "/omarchy/toggles/hypr/window-no-gaps.lua", "r")
+  if f then
+    f:close()
+    return true
+  end
+  return false
+end
+-- The gap to the screen's edges tiled windows have: the one set here (Tiled,
+-- or All windows), else Omarchy's.
+local function edge_gap()
+  if no_gaps_toggled() then
+    return omarchy_gaps_out
+  end
+  return math.floor(value("tiled", "gaps_out") or omarchy_gaps_out)
+end
 
 -- Another theme's colors.toml, as text (yours before Omarchy's).
 local omarchy_path = os.getenv("OMARCHY_PATH") or "/usr/share/omarchy"
@@ -788,7 +806,7 @@ local function clear_bar(w)
   end
   local r = m.reserved or {}
   local border = border_width("floating") or omarchy_border_size
-  local top = m.y + (r.top or 0) + omarchy_gaps_out + border + bar
+  local top = m.y + (r.top or 0) + edge_gap() + border + bar
   if w.at.y < top then
     hl.dispatch(hl.dsp.window.move({ x = w.at.x, y = top, window = "address:" .. w.address }))
   end
@@ -813,7 +831,7 @@ local function fit_to_screen(address)
     return
   end
   local r = m.reserved or {}
-  local edge = omarchy_gaps_out
+  local edge = edge_gap()
   local border = border_width("floating") or omarchy_border_size
   local bar = titlebar_height(w)
   local max_w = math.floor(m.width / m.scale - (r.left or 0) - (r.right or 0) - 2 * (edge + border))
@@ -1035,6 +1053,14 @@ local function apply()
   } })
   local rounding = math.floor(value("tiled", "rounding") or omarchy_rounding)
   hl.config({ decoration = { rounding = rounding } })
+  -- Gaps: between tiled windows and to the screen's edges, Omarchy's where
+  -- nothing is set (the scratchpad takes these too unless it sets its own).
+  if not no_gaps_toggled() then
+    hl.config({ general = {
+      gaps_in = math.floor(value("tiled", "gaps") or omarchy_gaps),
+      gaps_out = edge_gap(),
+    } })
+  end
   -- The shell's menus and panels round as Hyprland does, but it reads that
   -- only on a theme change: tell it.
   if rounding ~= shell_rounding then

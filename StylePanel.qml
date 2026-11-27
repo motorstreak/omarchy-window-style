@@ -139,6 +139,12 @@ Scope {
     { key: "gaps", label: "Gaps between windows", hint: "Omarchy's scratchpad has none; unset: as other workspaces", type: "number", min: 0, max: 40, step: 1, unit: "px" },
     { key: "gaps_out", label: "Gaps to screen edges", hint: "Top and sides; Omarchy's scratchpad is flush; unset: as other workspaces", type: "number", min: 0, max: 60, step: 1, unit: "px" }
   ])
+  // On All windows and Tiled: the gaps (Hyprland's, for tiled windows; the
+  // scratchpad takes them too unless it sets its own).
+  readonly property var gapRows: [
+    { key: "gaps", label: "Gaps between windows", hint: "Tiled windows; Omarchy's are 5", type: "number", min: 0, max: 40, step: 1, unit: "px" },
+    { key: "gaps_out", label: "Gaps to screen edges", hint: "Around the tiled windows; Omarchy's are 10", type: "number", min: 0, max: 60, step: 1, unit: "px" }
+  ]
   // Terminal: Ghostty's effects (custom shaders), for every Ghostty window.
   readonly property var terminalRows: [
     { key: "terminal_trail", label: "Cursor trail", hint: "Ghostty: a fading streak follows the cursor when it jumps, like Kitty's", type: "bool", global: true },
@@ -160,9 +166,10 @@ Scope {
   readonly property var sharedRows: (themeLook || otherThemeLooks) && currentTheme !== "" ? [
     { key: "_shared", label: "Set all other themes to this style", hint: "Every theme uses " + themeLabel(currentTheme) + "'s look; their own custom looks are deleted", type: "action" }
   ] : []
-  readonly property var rows: tab === "all" ? options.concat(shadowRows).concat(openRows).concat(agentOptions !== null ? agentRows : []).concat(sharedRows) : tab === "menus" ? menuRows : tab === "bar" ? barRows
+  readonly property var rows: tab === "all" ? options.concat(gapRows).concat(shadowRows).concat(openRows).concat(agentOptions !== null ? agentRows : []).concat(sharedRows) : tab === "menus" ? menuRows : tab === "bar" ? barRows
     : tab === "terminal" ? terminalRows
     : tab === "scratchpad" ? scratchpadRows
+    : tab === "tiled" ? options.concat(gapRows)
     : tab === "sidebars" && sidebarOptions !== null ? options.concat(sidebarRows) : options
   readonly property int count: rows.length + 1 // and the reset row
   // Whether the reset row has anything to do: an option set on this tab (on
