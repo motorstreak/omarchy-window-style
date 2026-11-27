@@ -1072,7 +1072,9 @@ local function titlebar_colour()
   if contrast(omarchy, fg) >= 4.5 then
     return omarchy
   end
-  for _, c in ipairs({ colour_in(theme_colors, "lighter_background"), colour_in(theme_colors, "color8") }) do
+  -- By name: a list of lookups would end at the first missing one (ipairs).
+  for _, name in ipairs({ "lighter_background", "color8" }) do
+    local c = colour_in(theme_colors, name)
     if c and c:lower() ~= bg:lower() and contrast(c, fg) >= 4.5 then
       return c
     end
