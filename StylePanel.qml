@@ -67,6 +67,12 @@ Scope {
   property int index: 0
   property bool confirming: false
 
+  // Nerd Font icons (the shell font carries them) for the kinds and the groups.
+  readonly property var kindIcons: ({ all: String.fromCodePoint(0xf056e), tiled: String.fromCodePoint(0xf056d), floating: String.fromCodePoint(0xf05b2), popped: String.fromCodePoint(0xf03cc), scratchpad: String.fromCodePoint(0xf0219), sidebars: "\uebf3", pinned: String.fromCodePoint(0xf0403), terminal: "\uf489", menus: String.fromCodePoint(0xf035c), bar: "\ueb7f" })
+  readonly property var sectionIcons: ({ "Bar": "\ueb7f", "Theme": String.fromCodePoint(0xf03d8), "Border": String.fromCodePoint(0xf05af),
+    "Look": String.fromCodePoint(0xf05cc), "Shadow": String.fromCodePoint(0xf0637), "Gaps": String.fromCodePoint(0xf084e),
+    "Size": String.fromCodePoint(0xf0293), "Sidebar": "\uebf3", "Ghostty effects": String.fromCodePoint(0xf02a0),
+    "New windows": String.fromCodePoint(0xf0704), "Themes": String.fromCodePoint(0xf08b5) })
   readonly property var tabs: {
     var list = [{ kind: "all", label: "All windows" }, { kind: "tiled", label: "Tiled" }, { kind: "floating", label: "Floating" },
       { kind: "popped", label: "Popped out" }, { kind: "scratchpad", label: "Scratchpad" }]
@@ -166,7 +172,35 @@ Scope {
   readonly property var sharedRows: (themeLook || otherThemeLooks) && currentTheme !== "" ? [
     { key: "_shared", label: "Set all other themes to this style", hint: "Every theme uses " + themeLabel(currentTheme) + "'s look; their own custom looks are deleted", type: "action" }
   ] : []
-  readonly property var rows: tab === "all" ? options.concat(gapRows).concat(shadowRows).concat(openRows).concat(agentOptions !== null ? agentRows : []).concat(sharedRows) : tab === "menus" ? menuRows : tab === "bar" ? barRows
+  // Rows are grouped under headings, in this order (stable within a group).
+  readonly property var sectionOrder: ["Bar", "Theme", "Border", "Look", "Shadow", "Gaps", "Size", "Sidebar", "Ghostty effects", "New windows", "Themes"]
+  function sectionOf(row) {
+    var k = row.key
+    if (row.islands) return "Bar"
+    if (row.action) return "Themes"
+    if (row.sidebar) return "Sidebar"
+    if (k === "open_as") return "New windows"
+    if (k.indexOf("terminal_") === 0) return "Ghostty effects"
+    if (k === "theme") return "Theme"
+    if (k.indexOf("border") === 0) return "Border"
+    if (k === "shadow" || k.indexOf("shadow_") === 0) return "Shadow"
+    if (k === "gaps" || k === "gaps_out") return "Gaps"
+    if (k === "height") return "Size"
+    return "Look"
+  }
+  // A kind with values of its own (a dot beside its name in the list).
+  function hasOwn(kind) {
+    if (kind === "terminal") return terminalSet()
+    var k = kinds[kind] || {}
+    for (var o in k) if (k[o] !== null && k[o] !== undefined) return true
+    return false
+  }
+  readonly property var rows: {
+    var list = rawRows.map(function(r, i) { return { r: r, i: i, s: root.sectionOrder.indexOf(root.sectionOf(r)) } })
+    list.sort(function(a, b) { return a.s - b.s || a.i - b.i })
+    return list.map(function(x) { return x.r })
+  }
+  readonly property var rawRows: tab === "all" ? options.concat(gapRows).concat(shadowRows).concat(openRows).concat(agentOptions !== null ? agentRows : []).concat(sharedRows) : tab === "menus" ? menuRows : tab === "bar" ? barRows
     : tab === "terminal" ? terminalRows
     : tab === "scratchpad" ? scratchpadRows
     : tab === "tiled" ? options.concat(gapRows)
@@ -533,10 +567,10 @@ Scope {
     BorderSurface {
       id: card
 
-      // Wide enough for every tab on one line, with room to spare.
-      width: Math.min(Math.max(Style.space(600), tabRow.implicitWidth + Style.spacing.panelPadding * 2 + Style.space(32)),
-        panel.width - Style.gapsOut * 2)
-      height: Math.min(panel.height - Style.gapsOut * 2, column.implicitHeight + Style.spacing.panelPadding * 2)
+      // A fixed window, as Lacquer's: the kinds listed on the left, the
+      // chosen one's settings on the right, scrolling when they don't fit.
+      width: Math.min(Style.space(880), panel.width - Style.gapsOut * 2)
+      height: Math.min(Style.space(620), panel.height - Style.gapsOut * 2)
       anchors.centerIn: parent
       radius: Style.cornerRadius
       // As Omarchy's menus: their background, border and its width from
@@ -584,7 +618,7 @@ Scope {
       }
 
       Column {
-        id: column
+        id: header
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
@@ -593,21 +627,18 @@ Scope {
 
         Text {
           width: parent.width
-          height: Math.max(Style.space(30), Style.font.title + Style.spacing.controlPaddingY)
-          verticalAlignment: Text.AlignVCenter
           textFormat: Text.PlainText
           text: "Window style"
           color: Commons.Color.menu.text
-          opacity: 0.58
           font.family: Style.font.menuFamily
-          font.pixelSize: Style.font.heading
+          font.pixelSize: Style.font.title
+          font.weight: Font.Medium
         }
 
         // Whose look this is: changes are saved for the theme in use.
         Text {
           visible: root.currentTheme !== ""
           width: parent.width
-          bottomPadding: Style.space(6)
           textFormat: Text.PlainText
           text: root.themeLook ? root.themeLabel(root.currentTheme) + "'s own look. Changes are saved for " + root.themeLabel(root.currentTheme) + " only."
                                : "The look all themes share. Your first change gives " + root.themeLabel(root.currentTheme) + " its own look."
@@ -617,182 +648,328 @@ Scope {
           font.pixelSize: Style.font.bodySmall
           elide: Text.ElideRight
         }
+      }
 
-        // The tabs: Tab / Shift + Tab, or a click.
-        Row {
-          id: tabRow
-          width: parent.width
-          spacing: Style.space(4)
-          bottomPadding: Style.space(6)
+      Text {
+        id: footer
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: Style.spacing.panelPadding
+        textFormat: Text.PlainText
+        text: root.tab === "terminal" ? "Tab next · ↑↓ choose · ←→ change · Enter on the last row · Esc close"
+            : "Tab next · ↑↓ choose · ←→ change · ⌫ back to " + (root.tab === "all" ? "Omarchy's" : root.parentLook) + " · Enter on reset · Esc close"
+        color: Commons.Color.menu.text
+        opacity: 0.45
+        font.family: Style.font.menuFamily
+        font.pixelSize: Style.font.bodySmall
+        horizontalAlignment: Text.AlignHCenter
+        elide: Text.ElideRight
+      }
+
+      // The kinds: Tab / Shift + Tab, or a click.
+      Column {
+        id: nav
+        anchors.left: parent.left
+        anchors.top: header.bottom
+        anchors.leftMargin: Style.spacing.panelPadding
+        anchors.topMargin: Style.space(18)
+        width: Style.space(190)
+        spacing: Style.space(2)
+
+        Repeater {
+          model: root.tabs
+
+          delegate: Rectangle {
+            required property var modelData
+            readonly property bool current: modelData.kind === root.tab
+            width: nav.width
+            height: Math.max(Style.space(38), navLabel.implicitHeight + Style.space(16))
+            radius: Style.cornerRadius
+            color: current ? Commons.Color.menu.selectedBackground : navMouse.containsMouse ? Util.alpha(Commons.Color.menu.text, 0.06) : "transparent"
+
+            OpticalGlyph {
+              id: navIcon
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(12)
+              anchors.verticalCenter: parent.verticalCenter
+              width: Style.space(20)
+              height: width
+              paintedSize: Style.space(16)
+              text: root.kindIcons[modelData.kind] || ""
+              fontSize: Style.font.body
+              color: parent.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
+              opacity: parent.current ? 1 : 0.7
+            }
+
+            Text {
+              id: navLabel
+              anchors.left: navIcon.right
+              anchors.leftMargin: Style.space(10)
+              anchors.right: dot.left
+              anchors.rightMargin: Style.space(8)
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: modelData.label
+              color: parent.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
+              font.family: Style.font.menuFamily
+              font.pixelSize: Style.font.body
+              font.weight: parent.current ? Font.Medium : Font.Normal
+              elide: Text.ElideRight
+            }
+
+            // Values of its own on this kind.
+            Rectangle {
+              id: dot
+              readonly property bool own: { root.kinds; root.shadow; return root.hasOwn(modelData.kind) }
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(14)
+              anchors.verticalCenter: parent.verticalCenter
+              width: Style.space(6)
+              height: width
+              radius: width / 2
+              visible: own
+              color: parent.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
+              opacity: 0.6
+            }
+
+            MouseArea {
+              id: navMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              onClicked: {
+                root.tab = modelData.kind
+                root.index = Math.min(root.index, root.lastIndex)
+                root.confirming = false
+                root.confirmingShared = false
+              }
+            }
+          }
+        }
+      }
+
+      Rectangle {
+        id: divider
+        anchors.left: nav.right
+        anchors.leftMargin: Style.space(16)
+        anchors.top: header.bottom
+        anchors.topMargin: Style.space(18)
+        anchors.bottom: footer.top
+        anchors.bottomMargin: Style.space(12)
+        width: 1
+        color: Util.alpha(Commons.Color.menu.text, 0.12)
+      }
+
+      Flickable {
+        id: flick
+        anchors.left: divider.right
+        anchors.leftMargin: Style.space(16)
+        anchors.right: parent.right
+        anchors.rightMargin: Style.spacing.panelPadding
+        anchors.top: header.bottom
+        anchors.topMargin: Style.space(12)
+        anchors.bottom: footer.top
+        anchors.bottomMargin: Style.space(12)
+        contentWidth: width
+        contentHeight: column.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+
+        // Keep the chosen row (and its heading, when it opens a group) in view.
+        function ensureVisible() {
+          var item = root.index < root.rows.length ? rowRepeater.itemAt(root.index) : resetRow
+          if (!item) return
+          var y = item.mapToItem(column, 0, 0).y
+          var bottom = y + item.height
+          if (root.index === 0) contentY = 0
+          else if (y < contentY) contentY = y
+          else if (bottom > contentY + height) contentY = Math.min(bottom - height, Math.max(0, contentHeight - height))
+        }
+        Connections {
+          target: root
+          function onIndexChanged() { Qt.callLater(flick.ensureVisible) }
+          function onTabChanged() { flick.contentY = 0; Qt.callLater(flick.ensureVisible) }
+          function onOpenChanged() { if (root.open) Qt.callLater(flick.ensureVisible) }
+        }
+
+        Column {
+          id: column
+          width: flick.width
+          spacing: Style.space(2)
 
           Repeater {
-            model: root.tabs
+            id: rowRepeater
+            model: root.rows
 
-            delegate: Rectangle {
+            delegate: Column {
+              id: entry
               required property var modelData
-              readonly property bool current: modelData.kind === root.tab
-              width: label.implicitWidth + Style.space(24)
-              height: label.implicitHeight + Style.space(12)
-              radius: height / 2
-              color: current ? Commons.Color.menu.selectedBackground : "transparent"
-              border.color: Util.alpha(Commons.Color.menu.text, current ? 0 : 0.15)
-              border.width: 1
+              required property int index
+              readonly property string section: root.sectionOf(modelData)
+              readonly property bool opensSection: index === 0 || root.sectionOf(root.rows[index - 1]) !== section
+              width: column.width
+
+              // The group's heading, above its first row.
+              Item {
+                visible: entry.opensSection
+                width: parent.width
+                height: visible ? headingText.height : 0
+
+                OpticalGlyph {
+                  x: Style.space(14)
+                  y: headingText.topPadding + (headingText.height - headingText.topPadding - headingText.bottomPadding - height) / 2
+                  width: Style.space(16)
+                  height: width
+                  paintedSize: Style.space(13)
+                  text: root.sectionIcons[entry.section] || ""
+                  fontSize: Style.font.caption
+                  color: Commons.Color.menu.text
+                  opacity: 0.55
+                }
 
               Text {
-                id: label
-                anchors.centerIn: parent
+                id: headingText
+                width: parent.width
+                leftPadding: Style.space(38)
+                topPadding: entry.index === 0 ? Style.space(4) : Style.space(18)
+                bottomPadding: Style.space(6)
                 textFormat: Text.PlainText
-                text: modelData.label
-                color: parent.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
+                text: entry.section.toUpperCase()
+                color: Commons.Color.menu.text
+                opacity: 0.45
                 font.family: Style.font.menuFamily
-                font.pixelSize: Style.font.bodySmall
-                font.weight: parent.current ? Font.Medium : Font.Normal
+                font.pixelSize: Style.font.caption
+                font.weight: Font.Medium
+                font.letterSpacing: Style.space(1)
+              }
               }
 
-              MouseArea {
-                anchors.fill: parent
-                onClicked: {
-                  root.tab = modelData.kind
-                  root.index = Math.min(root.index, root.lastIndex)
-                  root.confirming = false
+              Rectangle {
+                id: row
+                readonly property var modelData: entry.modelData
+                readonly property int index: entry.index
+                readonly property bool current: index === root.index
+                readonly property var source: { root.kinds; root.shadow; root.tab; return root.lookup(modelData) }
+
+                width: column.width
+                height: panel.rowHeight
+                radius: Style.cornerRadius
+                color: current ? Commons.Color.menu.selectedBackground : "transparent"
+                opacity: root.enabled(modelData) ? 1 : 0.4
+
+                Column {
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(14)
+                  anchors.right: value.left
+                  anchors.rightMargin: Style.space(40)
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(2)
+
+                  Text {
+                    width: parent.width
+                    textFormat: Text.PlainText
+                    text: row.modelData.label
+                    color: row.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
+                    font.family: Style.font.menuFamily
+                    font.pixelSize: Style.font.body
+                    font.weight: Font.Medium
+                    elide: Text.ElideRight
+                  }
+
+                  Text {
+                    width: parent.width
+                    textFormat: Text.PlainText
+                    text: row.modelData.hint
+                    color: row.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
+                    opacity: 0.52
+                    font.family: Style.font.menuFamily
+                    font.pixelSize: Style.font.bodySmall
+                    elide: Text.ElideRight
+                  }
+                }
+
+                Rectangle {
+                  readonly property string hex: { root.kinds; root.tab; return row.modelData.type === "colour" ? root.swatch(row.modelData) : "" }
+                  visible: hex !== ""
+                  anchors.right: value.left
+                  anchors.rightMargin: Style.space(8)
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Style.space(18)
+                  height: width
+                  radius: width / 4
+                  color: hex || "transparent"
+                  border.color: Util.alpha(Commons.Color.menu.text, 0.3)
+                  border.width: 1
+                }
+
+                Text {
+                  id: value
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(14)
+                  anchors.verticalCenter: parent.verticalCenter
+                  textFormat: Text.PlainText
+                  text: { root.kinds; root.shadow; root.tab; root.confirmingShared; var arrows = row.modelData.type !== "bool" && row.modelData.type !== "action" && !row.modelData.follows; return (arrows ? "‹  " : "") + root.shown(row.modelData) + (arrows ? "  ›" : "") }
+                  color: row.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
+                  // Inherited: dimmed.
+                  opacity: row.source.from === "own" ? 1 : 0.5
+                  font.family: Style.font.menuFamily
+                  font.pixelSize: Style.font.body
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  onClicked: function(mouse) {
+                    root.index = row.index
+                    root.confirming = false
+                    root.change(row.modelData, row.modelData.type !== "bool" && mouse.x < width / 2 ? -1 : 1)
+                  }
                 }
               }
             }
           }
-        }
 
-        Repeater {
-          model: root.rows
-
-          delegate: Rectangle {
-            id: row
-            required property var modelData
-            required property int index
-            readonly property bool current: index === root.index
-            readonly property var source: { root.kinds; root.shadow; root.tab; return root.lookup(modelData) }
-
+          Rectangle {
+            id: resetRow
+            readonly property bool current: root.index === root.rows.length
             width: column.width
-            height: panel.rowHeight
-            radius: Style.cornerRadius
-            color: current ? Commons.Color.menu.selectedBackground : "transparent"
-            opacity: root.enabled(modelData) ? 1 : 0.4
+            height: Math.max(Style.space(40), Style.font.body + Style.spacing.rowPaddingX * 2) + Style.space(18)
+            color: "transparent"
+            // Nothing set here: nothing to reset.
+            opacity: root.resettable ? 1 : 0.35
 
-            Column {
+            Rectangle {
               anchors.left: parent.left
-              anchors.leftMargin: Style.space(14)
-              anchors.right: value.left
-              anchors.rightMargin: Style.space(40)
-              anchors.verticalCenter: parent.verticalCenter
-              spacing: Style.space(2)
+              anchors.right: parent.right
+              anchors.bottom: parent.bottom
+              height: parent.height - Style.space(18)
+              radius: Style.cornerRadius
+              color: resetRow.current ? Commons.Color.menu.selectedBackground : "transparent"
 
               Text {
-                width: parent.width
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(14)
+                anchors.verticalCenter: parent.verticalCenter
                 textFormat: Text.PlainText
-                text: row.modelData.label
-                color: row.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
+                text: root.tab === "terminal" ? (!root.resettable ? "Nothing to reset: no effects" : root.confirming ? "Press again to turn every effect off" : "Turn every effect off")
+                  : !root.resettable ? (root.tab === "all" ? "Nothing to reset: Omarchy's look" : "Nothing to reset: " + root.parentLook + " look")
+                    : root.confirming ? "Press again to reset " + (root.tab === "all" ? "every tab" : "this tab")
+                                      : (root.tab === "all" ? "Reset everything to Omarchy's look" : "Reset this tab to " + root.parentLook)
+                color: resetRow.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
                 font.family: Style.font.menuFamily
                 font.pixelSize: Style.font.body
                 font.weight: Font.Medium
-                elide: Text.ElideRight
               }
-
-              Text {
-                width: parent.width
-                textFormat: Text.PlainText
-                text: row.modelData.hint
-                color: row.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
-                opacity: 0.52
-                font.family: Style.font.menuFamily
-                font.pixelSize: Style.font.bodySmall
-                elide: Text.ElideRight
-              }
-            }
-
-            Rectangle {
-              readonly property string hex: { root.kinds; root.tab; return row.modelData.type === "colour" ? root.swatch(row.modelData) : "" }
-              visible: hex !== ""
-              anchors.right: value.left
-              anchors.rightMargin: Style.space(8)
-              anchors.verticalCenter: parent.verticalCenter
-              width: Style.space(18)
-              height: width
-              radius: width / 4
-              color: hex || "transparent"
-              border.color: Util.alpha(Commons.Color.menu.text, 0.3)
-              border.width: 1
-            }
-
-            Text {
-              id: value
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(14)
-              anchors.verticalCenter: parent.verticalCenter
-              textFormat: Text.PlainText
-              text: { root.kinds; root.shadow; root.tab; root.confirmingShared; var arrows = row.modelData.type !== "bool" && row.modelData.type !== "action" && !row.modelData.follows; return (arrows ? "‹  " : "") + root.shown(row.modelData) + (arrows ? "  ›" : "") }
-              color: row.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
-              // Inherited: dimmed.
-              opacity: row.source.from === "own" ? 1 : 0.5
-              font.family: Style.font.menuFamily
-              font.pixelSize: Style.font.body
             }
 
             MouseArea {
               anchors.fill: parent
-              onClicked: function(mouse) {
-                root.index = row.index
-                root.confirming = false
-                root.change(row.modelData, row.modelData.type !== "bool" && mouse.x < width / 2 ? -1 : 1)
+              onClicked: {
+                if (!root.resettable) return
+                root.index = root.rows.length
+                root.activate(1)
               }
             }
           }
-        }
-
-        Rectangle {
-          readonly property bool current: root.index === root.rows.length
-          width: column.width
-          height: Math.max(Style.space(40), Style.font.body + Style.spacing.rowPaddingX * 2)
-          radius: Style.cornerRadius
-          color: current ? Commons.Color.menu.selectedBackground : "transparent"
-          // Nothing set here: nothing to reset.
-          opacity: root.resettable ? 1 : 0.35
-
-          Text {
-            anchors.left: parent.left
-            anchors.leftMargin: Style.space(14)
-            anchors.verticalCenter: parent.verticalCenter
-            textFormat: Text.PlainText
-            text: root.tab === "terminal" ? (!root.resettable ? "Nothing to reset: no effects" : root.confirming ? "Press again to turn every effect off" : "Turn every effect off")
-              : !root.resettable ? (root.tab === "all" ? "Nothing to reset: Omarchy's look" : "Nothing to reset: " + root.parentLook + " look")
-                : root.confirming ? "Press again to reset " + (root.tab === "all" ? "every tab" : "this tab")
-                                  : (root.tab === "all" ? "Reset everything to Omarchy's look" : "Reset this tab to " + root.parentLook)
-            color: parent.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
-            font.family: Style.font.menuFamily
-            font.pixelSize: Style.font.body
-            font.weight: Font.Medium
-          }
-
-          MouseArea {
-            anchors.fill: parent
-            onClicked: {
-              if (!root.resettable) return
-              root.index = root.rows.length
-              root.activate(1)
-            }
-          }
-        }
-
-        Text {
-          width: parent.width
-          topPadding: Style.space(8)
-          textFormat: Text.PlainText
-          text: root.tab === "terminal" ? "Tab next tab · ↑↓ choose · ←→ change · Enter on the last row · Esc close"
-              : "Tab next tab · ↑↓ choose · ←→ change · ⌫ back to " + (root.tab === "all" ? "Omarchy's" : root.parentLook) + " · Enter on reset · Esc close"
-          color: Commons.Color.menu.text
-          opacity: 0.45
-          font.family: Style.font.menuFamily
-          font.pixelSize: Style.font.bodySmall
-          horizontalAlignment: Text.AlignHCenter
-          elide: Text.ElideRight
         }
       }
     }

@@ -34,6 +34,7 @@ file, also run `omarchy restart shell`. Remove it with
 `Super + Alt + S` in a sidebar, have a "Window style…" row that opens it on the
 Sidebars tab).
 
+- The panel is a fixed window: the kinds (with icons) listed on the left, their settings on the right in groups, scrolling when they do not fit.
 - `Tab` / `Shift + Tab` (or a click) switch tabs: All windows, Tiled, Floating,
   Popped out, Scratchpad, Sidebars, Docked, Menus.
 - `↑` / `↓` choose a row; `←` / `→` (or a click) change it. A change shows at
